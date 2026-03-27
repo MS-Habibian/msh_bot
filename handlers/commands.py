@@ -3,20 +3,20 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 START_MESSAGE = """
-*Welcome to the Universal Downloader Bot!* 🚀
+*به ربات دانلود کننده جهانی خوش آمدید!* 🚀
 
-I can help you download files from the web.
+من می‌توانم به شما در دانلود فایل از وب کمک کنم.
 
-*Commands:*
-/start - Restart the bot
-/help - Show this help message
-/dl <link> - Download a file from the given URL
+*دستورات:*
+/start - راه‌اندازی مجدد ربات
+/help - نمایش این پیام راهنما
+/dl <لینک> - دانلود یک فایل از آدرس URL داده شده
 
-*Example:*
+*مثال:*
 `/dl https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf`
 
-_Note: I can only send files up to 50MB due to Telegram limits._
 """
+# _توجه: به دلیل محدودیت‌های بله، من فقط می‌توانم فایل‌هایی تا حجم 50 مگابایت ارسال کنم._
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -25,6 +25,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        text="To download a file, type `/dl` followed by your link.\n\nExample: `/dl https://example.com/file.zip`",
+        text="برای دانلود یک فایل، عبارت `/dl` را نوشته و سپس لینک خود را وارد کنید.\n\nمثال: `/dl https://example.com/file.zip`",
         parse_mode="Markdown",
     )
