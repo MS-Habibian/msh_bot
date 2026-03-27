@@ -51,7 +51,7 @@ async def download_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await update.message.reply_document(
                 document=file_to_send,
                 read_timeout=180,  # Max time to wait for a response from Telegram
-                write_timeout=180,  # Max time allowed to upload the data to Telegram
+                write_timeout=3600,  # Max time allowed to upload the data to Telegram
                 connect_timeout=180,
             )
 
