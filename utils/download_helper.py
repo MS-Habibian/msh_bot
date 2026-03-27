@@ -35,9 +35,9 @@ async def download_file_async(url: str, progress_callback=None) -> str:
             # 1. Detect file size from headers (if the server provides it)
             total_size = int(response.headers.get('Content-Length', 0))
             
-            # Telegram bot limit is 50MB (52,428,800 bytes)
-            if total_size > 52428800:
-                raise ValueError(f"File is too large ({format_size(total_size)}). Telegram limit is 50 MB.")
+            # Telegram bot limit is 5GB (52,428,800 bytes)
+            if total_size > 5242880000:
+                raise ValueError(f"File is too large ({format_size(total_size)}). Telegram limit is 5 GB.")
 
             filename = get_filename(url, response.headers)
             filepath = os.path.join(tempfile.gettempdir(), filename)
