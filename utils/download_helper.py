@@ -1,24 +1,8 @@
 # utils/download_helper.py
 import os
 import time
-import tempfile
 import aiohttp
-from urllib.parse import urlparse, unquote
-
-
-def get_filename(url: str, headers: dict) -> str:
-    """Tries to figure out the best filename from the headers or the URL."""
-    if "Content-Disposition" in headers:
-        content_disposition = headers.get("Content-Disposition")
-        if "filename=" in content_disposition:
-            filename = content_disposition.split("filename=")[1].strip("\"'")
-            return filename
-
-    parsed_url = urlparse(url)
-    filename = unquote(os.path.basename(parsed_url.path))
-    if not filename:
-        filename = "downloaded_file.unknown"
-    return filename
+import urllib.parse
 
 
 def format_size(bytes_size: int) -> str:
@@ -26,17 +10,21 @@ def format_size(bytes_size: int) -> str:
     return f"{bytes_size / (1024 * 1024):.2f} MB"
 
 
-async def download_file_async(url: str, progress_callback=None) -> str:
-    """
-    Downloads a file asynchronously, checks size, and reports progress.
-    """
-    print("start downloading url", url)
+async def download_file_async(url, dest_folder, progress_callback=None):
+    # Modified to save inside a specific dest_folder
+    os.makedirs(dest_folder, exist_ok=True)
+
     async with aiohttp.ClientSession() as session:
-        # Start the request, but don't download the body yet
         async with session.get(url) as response:
             response.raise_for_status()
 
-            # 1. Detect file size from headers (if the server provides it)
+            # Extract filename (simplified for this example)
+            parsed_url = urllib.parse.urlparse(url)
+            filename = os.path.basename(urllib.parse.unquote(parsed_url.path))
+            if not filename:
+                filename = "downloaded_file.dat"
+
+            filepath = os.path.join(dest_folder, filename)
             total_size = int(response.headers.get("Content-Length", 0))
             print("file size:", total_size)
             # Telegram bot limit is 5GB (52,428,800 bytes)
@@ -45,9 +33,6 @@ async def download_file_async(url: str, progress_callback=None) -> str:
                     f"File is too large ({format_size(total_size)}). Telegram limit is 5 GB."
                 )
 
-            filename = get_filename(url, response.headers)
-            filepath = os.path.join(tempfile.gettempdir(), filename)
-            print("file name and path:", filename, filepath)
             downloaded_size = 0
             last_update_time = time.time()
 
@@ -56,12 +41,35 @@ async def download_file_async(url: str, progress_callback=None) -> str:
                 async for chunk in response.content.iter_chunked(8192):
                     f.write(chunk)
                     downloaded_size += len(chunk)
-
                     # 3. Report progress every 2 seconds (to avoid Telegram rate limits)
                     now = time.time()
-                    if now - last_update_time > 2:
+                    if now - last_update_time > 4:
                         if progress_callback:
                             await progress_callback(downloaded_size, total_size)
                         last_update_time = now
-            print("download finisheddddddddd")
             return filepath
+
+
+def split_file(filepath, chunk_size=20 * 1024 * 1024):  # 49 MB chunks
+    """Splits a file into binary chunks and returns a list of part paths."""
+    file_size = os.path.getsize(filepath)
+    if file_size <= chunk_size:
+        return [filepath]
+
+    part_files = []
+    part_num = 1
+    with open(filepath, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            # Create extensions like .part001, .part002
+            part_name = f"{filepath}.part{part_num:03d}"
+            with open(part_name, "wb") as p:
+                p.write(chunk)
+            part_files.append(part_name)
+            part_num += 1
+
+    # Remove the original large file to save disk space
+    os.remove(filepath)
+    return part_files

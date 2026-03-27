@@ -1,10 +1,10 @@
 # main.py
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from config import BOT_TOKEN
 from handlers.commands import start_command, help_command
-from handlers.downloader import download_command
+from handlers.downloader import download_command, handle_reupload_callback
 
 # Setup logging
 logging.basicConfig(
@@ -29,6 +29,10 @@ def main() -> None:
     # filters.Entity("url") ensures this ONLY triggers if the user sends a web link
     # application.add_handler(MessageHandler(filters.Entity("url"), handle_url))
     application.add_handler(CommandHandler("dl", download_command))
+     # Add the handler for the inline keyboard buttons. 
+    # We filter for callback data starting with "reup:"
+    application.add_handler(CallbackQueryHandler(handle_reupload_callback, pattern="^reup:"))
+
 
     # Start the bot
     print("Bot is starting with clean architecture...")
