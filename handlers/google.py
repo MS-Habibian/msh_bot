@@ -60,22 +60,25 @@ async def google_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     #     parse_mode="HTML",
     #     disable_web_page_preview=True,  # Disables link previews so the chat doesn't get cluttered
     # )
-     # قالب‌بندی پیام خروجی
+    # قالب‌بندی پیام خروجی
     message_text = f"🔍 <b>نتایج جستجو برای:</b> <i>{safe_query}</i>\n\n"
-    
+
     for i, res in enumerate(results, 1):
         # ایمن‌سازی عنوان و توضیحات
-        title = html.escape(res['title'])
-        link = res['link']
-        snippet = html.escape(res['snippet'])
-        
+        title = html.escape(res["title"])
+        link = res["link"]
+        snippet = html.escape(res["snippet"])
+
         # نمایش عنوان و توضیحات
         message_text += f"{i}. <b>{title}</b>\n"
         message_text += f"📝 {snippet}\n"
-        
+
         # قراردادن دستور dlp به صورت Code Block (با یک کلیک کپی می‌شود)
         message_text += f"📥 برای دانلود روی دستور زیر کلیک کنید تا کپی شود:\n"
         message_text += f"<code>/dlp {link}</code>\n\n"
+        message_text += (
+            f"برای دانلود روی دستور زیر کلیک کنید تا کپی شود:\n`/dlp {link}`"
+        )
 
     # مدیریت محدودیت طول پیام تلگرام (4096 کاراکتر)
     if len(message_text) > 4096:
@@ -83,7 +86,7 @@ async def google_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ارسال پیام نهایی
     await processing_message.edit_text(
-        text=message_text, 
-        parse_mode='HTML', 
-        disable_web_page_preview=True # غیرفعال کردن پیش‌نمایش لینک‌ها برای جلوگیری از شلوغی
+        text=message_text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,  # غیرفعال کردن پیش‌نمایش لینک‌ها برای جلوگیری از شلوغی
     )
