@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from config import BOT_TOKEN
 from handlers.commands import start_command, help_command
+from handlers.dlp import dlp_command
 from handlers.downloader import download_command, handle_reupload_callback
 from handlers.google import google_command
 
@@ -35,6 +36,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_reupload_callback, pattern="^reup:"))
 
     application.add_handler(CommandHandler("google", google_command))
+
+    application.add_handler(CommandHandler("dlp", dlp_command))
+
 
 
     # Start the bot
