@@ -1,47 +1,27 @@
-# handlers/dlp_handler.py (یا هر فایلی که دستورات را مدیریت می‌کنید)
 import os
-from utils.web_downloader import download_single_html, cleanup_file
+from telegram import Update
+from telegram.ext import ContextTypes
+from utils.page_downloader import download_webpage_as_mhtml
 
-# این تابع باید به عنوان هندلر دستور /dlp تنظیم شود
-async def dlp_command(message):
-    # جدا کردن لینک از متن پیام (مثلاً: /dlp https://example.com)
-    parts = message.text.split()
+# Inside your message handler function:
+async def dlp_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    url = update.message.text # assuming the user sent a URL
     
-    if len(parts) < 2:
-        await message.reply_text(
-            "⚠️ لطفاً لینک مورد نظر خود را همراه با دستور ارسال کنید.\n"
-            "مثال:\n"
-            "`/dlp https://example.com`",
-            parse_mode="Markdown"
-        )
-        return
+    if url.startswith("http://") or url.startswith("https://"):
+        await update.message.reply_text("Loading webpage, executing JS, and bundling assets... Please wait.")
         
-    url = parts[1]
-    
-    # پیام انتظار
-    wait_msg = await message.reply_text("⏳ در حال دانلود صفحه و فایل‌های مرتبط، لطفاً کمی صبر کنید...")
-    
-    # فراخوانی تابع دانلود
-    output_file = download_single_html(url, downloads_dir="downloads")
-    
-    if output_file and os.path.exists(output_file):
-        try:
-            # ارسال فایل به کاربر
-            with open(output_file, 'rb') as file:
-                await message.reply_document(
-                    document=file,
-                    caption="✅ صفحه مورد نظر شما با موفقیت دانلود شد!\n\nاین فایل شامل تمام تصاویر و استایل‌های صفحه است و به صورت آفلاین اجرا می‌شود."
+        # Call our Playwright function
+        filepath = await download_webpage_as_mhtml(url)
+        
+        if filepath and os.path.exists(filepath):
+            # Send the file back to the user
+            with open(filepath, 'rb') as doc:
+                await update.message.reply_document(
+                    document=doc, 
+                    filename=os.path.basename(filepath),
+                    caption="Here is your saved webpage. Open it in Chrome/Edge/Brave."
                 )
-        except Exception as e:
-            await message.reply_text("❌ مشکلی در ارسال فایل به وجود آمد.")
-            print(f"Send error: {e}")
-        finally:
-            # پاک کردن فایل از روی سرور پس از ارسال
-            cleanup_file(output_file)
-            
-            # پاک کردن پیام انتظار
-            await wait_msg.delete()
-    else:
-        # در صورت شکست در دانلود
-        await wait_msg.edit_text("❌ متاسفانه در دانلود این صفحه مشکلی پیش آمد. ممکن است سایت در دسترس نباشد یا دانلود آن مسدود شده باشد.")
-        cleanup_file(output_file)
+            # Clean up the file after sending
+            os.remove(filepath)
+        else:
+            await update.message.reply_text("Failed to download the webpage.")
