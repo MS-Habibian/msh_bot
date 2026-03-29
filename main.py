@@ -5,6 +5,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Mess
 from config import BOT_TOKEN
 from handlers.commands import start_command, help_command
 from handlers.downloader import download_command, handle_reupload_callback
+from handlers.google import google_command
 
 # Setup logging
 logging.basicConfig(
@@ -32,6 +33,8 @@ def main() -> None:
      # Add the handler for the inline keyboard buttons. 
     # We filter for callback data starting with "reup:"
     application.add_handler(CallbackQueryHandler(handle_reupload_callback, pattern="^reup:"))
+
+    application.add_handler(CommandHandler("google", google_command))
 
 
     # Start the bot
