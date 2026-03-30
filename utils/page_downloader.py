@@ -20,13 +20,16 @@ async def download_webpage_as_mhtml(url: str, download_dir: str = "downloads") -
 
     async with async_playwright() as p:
         # Launch headless chromium
+        ## chromium for server side
         browser = await p.chromium.launch(headless=True)
+        ## use local chrome browser,
+        # browser = await p.chromium.launch(headless=True, channel="chrome")
         context = await browser.new_context()
         page = await context.new_page()
 
         try:
             # Go to the URL and wait for the network to be idle (ensures JS finishes loading)
-            await page.goto(url, wait_until="networkidle", timeout=30000)
+            await page.goto(url, wait_until="networkidle", timeout=300000)
 
             # Optionally scroll to the bottom to trigger lazy-loaded images
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")

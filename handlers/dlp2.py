@@ -1,11 +1,11 @@
 import os
 from telegram import Update
 from telegram.ext import ContextTypes
-from utils.page_downloader import download_webpage_as_mhtml
+from utils.page_downloader2 import download_as_pdf
 
 
 # Inside your message handler function:
-async def dlp_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def dlp2_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     print(11111111)
     # url = update.message.text  # assuming the user sent a URL
     url = context.args[0]
@@ -17,7 +17,7 @@ async def dlp_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
 
         # Call our Playwright function
-        filepath = await download_webpage_as_mhtml(url)
+        filepath = await download_as_pdf(url)
 
         if filepath and os.path.exists(filepath):
             # Send the file back to the user
