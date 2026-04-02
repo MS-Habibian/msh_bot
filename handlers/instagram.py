@@ -13,7 +13,7 @@ async def instagram_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         L = instaloader.Instaloader()
-        L.load_session_from_file('your_instagram_username')  # Replace with your actual Instagram username
+        L.load_session_from_file('mehdisharifits')  # Replace with your actual Instagram username
         
         profile = instaloader.Profile.from_username(L.context, username)
         posts = list(profile.get_posts())[:3]
