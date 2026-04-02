@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from config import BOT_TOKEN
 from handlers.commands import start_command, help_command
-from handlers.dlp import dlp_command
+from handlers.dlp import dlp_callback, dlp_command
 from handlers.dlp2 import dlp2_command
 from handlers.downloader import download_command, handle_reupload_callback
 from handlers.google import google_command
@@ -43,6 +43,8 @@ def main() -> None:
     application.add_handler(CommandHandler("dlp2", dlp2_command))
 
     application.add_handler(CommandHandler("image", image_command))
+    application.add_handler(CallbackQueryHandler(dlp_callback, pattern="^dlp:"))
+
 
 
 
