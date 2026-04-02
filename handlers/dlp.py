@@ -1,21 +1,27 @@
 import os
 from telegram import Update
 from telegram.ext import ContextTypes
+from database.models import User
+from decorators.transactional_decorator import transactional_handler
+from services.billing_service import BillingManager
 from utils.page_downloader import download_webpage_as_mhtml
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
-# Inside your message handler function:
-async def dlp_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    print(11111111)
-    # url = update.message.text  # assuming the user sent a URL
+@transactional_handler()
+async def dlp_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    session: AsyncSession,
+    user: User,
+    billing: BillingManager,
+) -> None:
+    billing.charge(cost_requests=1, action="/dlp")
     url = context.args[0]
-    print(2222222)
     if url.startswith("http://") or url.startswith("https://"):
-        print(333333333333)
         await update.message.reply_text(
             "Loading webpage, executing JS, and bundling assets... Please wait."
         )
-
         # Call our Playwright function
         filepath = await download_webpage_as_mhtml(url)
 
@@ -30,7 +36,6 @@ async def dlp_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             # Clean up the file after sending
             os.remove(filepath)
         else:
-            print(4444444)
             await update.message.reply_text("Failed to download the webpage.")
     else:
         print("bad url:", url)

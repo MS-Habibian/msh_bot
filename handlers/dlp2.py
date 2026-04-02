@@ -1,11 +1,19 @@
 import os
 from telegram import Update
 from telegram.ext import ContextTypes
+from database.models import User
+from services.billing_service import BillingManager
 from utils.page_downloader2 import download_as_pdf
+from sqlalchemy.ext.asyncio import AsyncSession
 
-
-# Inside your message handler function:
-async def dlp2_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def dlp2_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    session: AsyncSession,
+    user: User,
+    billing: BillingManager,
+) -> None:
+    billing.charge(cost_requests=1, action="/dlp2")
     print(11111111)
     # url = update.message.text  # assuming the user sent a URL
     url = context.args[0]

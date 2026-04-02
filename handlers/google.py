@@ -2,11 +2,21 @@
 import html
 from telegram import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+from database.models import User
+from services.billing_service import BillingManager
 from utils.google_scraper import search_google  # We will update this utility below
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
-async def google_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def google_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    session: AsyncSession,
+    user: User,
+    billing: BillingManager,
+):
     # Check if the user provided a search query
+    billing.charge(cost_requests=1, action="/google")
     if not context.args:
         await update.message.reply_text(
             "لطفاً یک عبارت برای جستجو وارد کنید. مثال:\n`/google python programming`",
