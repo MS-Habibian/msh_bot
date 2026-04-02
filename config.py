@@ -1,10 +1,20 @@
-# config.py
+import os
+from dotenv import load_dotenv
 
-# Replace with your actual bot token
-# hyvana bot
-# BOT_TOKEN = "1421133829:AgGZYsLFZIh3BDcJ6zoY4TWRRa5eYorP_9c"
-# msh bot
-BOT_TOKEN = "1855140195:kYt1ItznwXwZ2kSa9BTLPkgK9QoDUdVUld4"
+load_dotenv()
 
-# Maximum file size allowed by Telegram Bot API (50 MB)
-MAX_FILE_SIZE = 50 * 1024 * 1024
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+BASE_URL = os.getenv("BASE_URL")
+MAX_FILE_SIZE = os.getenv("MAX_FILE_SIZE")
+INITIAL_GIFT_BYTES = os.getenv("INITIAL_GIFT_BYTES")
+INITIAL_GIFT_REQUESTS = os.getenv("INITIAL_GIFT_REQUESTS")
+
+DATABASE = os.getenv("DATABASE")
+
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+
+SQLITE_DB_NAME = os.getenv("SQLITE_DB_NAME")
