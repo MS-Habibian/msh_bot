@@ -30,12 +30,8 @@ async def fetch_instagram_posts_playwright(username: str):
             timezone_id='America/New_York',
         )
 
-        # Block unnecessary resources to speed up loading
-        await context.route("**/*.{woff,woff2,ttf,otf}", lambda route: route.abort())
-
         page = await context.new_page()
 
-        # Hide automation flags
         await page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
@@ -44,72 +40,120 @@ async def fetch_instagram_posts_playwright(username: str):
 
         try:
             url = f"https://www.instagram.com/{username}/"
-            await page.goto(url, wait_until='networkidle', timeout=30000)
+            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
 
-            # Check if login wall appeared
-            page_content = await page.content()
-            if 'Log in' in page_content and 'loginForm' in page_content:
+            # Wait a bit for JS to render
+            await asyncio.sleep(4)
+
+            # Take a screenshot for debugging - REMOVE LATER
+            await page.screenshot(path="/tmp/instagram_debug.png", full_page=False)
+
+            # Get full page text for diagnosis
+            page_text = await page.inner_text('body')
+            page_html = await page.content()
+
+            # --- Diagnosis ---
+            if 'Log in' in page_text and ('loginForm' in page_html or 'Login' in page_text):
                 await browser.close()
-                return None, "Instagram is showing login wall. Try again later."
+                return None, "Instagram is showing login wall."
 
-            # Check if account exists
-            if 'Sorry, this page' in page_content or 'Page Not Found' in page_content:
+            if 'Sorry, this page' in page_text or 'Page Not Found' in page_text:
                 await browser.close()
                 return None, f"Account @{username} not found."
 
-            # Check if private
-            if 'This Account is Private' in page_content:
+            if 'This Account is Private' in page_text:
                 await browser.close()
                 return None, f"@{username} is a private account."
 
-            # Wait for posts to load
-            await page.wait_for_selector('article', timeout=15000)
+            # Debug: show what we actually got
+            print(f"[DEBUG] Page title: {await page.title()}")
+            print(f"[DEBUG] Page text preview: {page_text[:500]}")
 
-            # Scroll down a bit to trigger lazy loading
-            await page.evaluate("window.scrollBy(0, 500)")
-            await asyncio.sleep(2)
+            # Try multiple selectors for posts
+            post_links = []
+
+            # Selector strategy 1: standard article links
+            try:
+                post_links = await page.eval_on_selector_all(
+                    'a[href*="/p/"]',
+                    'links => [...new Set(links.map(l => l.href))].slice(0, 5)'
+                )
+                print(f"[DEBUG] Strategy 1 found: {len(post_links)} links")
+            except:
+                pass
+
+            # Selector strategy 2: all links containing /p/
+            if not post_links:
+                try:
+                    all_links = await page.eval_on_selector_all(
+                        'a',
+                        'links => links.map(l => l.href)'
+                    )
+                    post_links = list(dict.fromkeys([
+                        l for l in all_links
+                        if '/p/' in l and 'instagram.com' in l
+                    ]))[:5]
+                    print(f"[DEBUG] Strategy 2 found: {len(post_links)} links")
+                except:
+                    pass
+
+            # Selector strategy 3: scroll and retry
+            if not post_links:
+                await page.evaluate("window.scrollTo(0, 300)")
+                await asyncio.sleep(2)
+                try:
+                    post_links = await page.eval_on_selector_all(
+                        'a[href*="/p/"]',
+                        'links => [...new Set(links.map(l => l.href))].slice(0, 5)'
+                    )
+                    print(f"[DEBUG] Strategy 3 found: {len(post_links)} links")
+                except:
+                    pass
+
+            if not post_links:
+                # Show what HTML elements exist for debugging
+                tags = await page.eval_on_selector_all(
+                    '*',
+                    'els => [...new Set(els.map(e => e.tagName))].join(", ")'
+                )
+                print(f"[DEBUG] Tags found on page: {tags[:300]}")
+                await browser.close()
+                return None, "No posts found. Instagram may have changed its layout."
 
             # Get profile name
             try:
                 name_el = await page.query_selector('h1, h2')
                 if name_el:
-                    profile_name = await name_el.inner_text()
-                    profile_name = profile_name.strip()
+                    profile_name = (await name_el.inner_text()).strip() or username
             except:
                 profile_name = username
 
-            # Get all post links (first 5)
-            post_links = await page.eval_on_selector_all(
-                'article a[href*="/p/"]',
-                'links => [...new Set(links.map(l => l.href))].slice(0, 5)'
-            )
-
-            if not post_links:
-                await browser.close()
-                return None, "No posts found. Profile may be empty or Instagram blocked the request."
-
-            # Visit each post and extract data
+            # Visit each post
             for link in post_links:
                 try:
-                    await page.goto(link, wait_until='networkidle', timeout=20000)
-                    await asyncio.sleep(1)
+                    await page.goto(link, wait_until='domcontentloaded', timeout=20000)
+                    await asyncio.sleep(2)
 
                     post = {'url': link}
 
-                    # Get image(s)
+                    # Get image
                     try:
                         img_el = await page.query_selector('article img[srcset], article img[src]')
+                        if not img_el:
+                            img_el = await page.query_selector('img[srcset], img[src]')
                         if img_el:
-                            # Prefer srcset highest resolution
                             srcset = await img_el.get_attribute('srcset')
                             if srcset:
-                                # Parse srcset and get highest resolution
-                                sources = [s.strip().split(' ') for s in srcset.split(',')]
-                                sources = [(s[0], int(s[1].replace('w', ''))) for s in sources if len(s) == 2]
+                                sources = []
+                                for s in srcset.split(','):
+                                    parts = s.strip().split(' ')
+                                    if len(parts) == 2:
+                                        try:
+                                            sources.append((parts[0], int(parts[1].replace('w', ''))))
+                                        except:
+                                            pass
                                 if sources:
-                                    best = max(sources, key=lambda x: x[1])
-                                    post['image'] = best[0]
-                            
+                                    post['image'] = max(sources, key=lambda x: x[1])[0]
                             if not post.get('image'):
                                 post['image'] = await img_el.get_attribute('src')
                     except:
@@ -117,7 +161,7 @@ async def fetch_instagram_posts_playwright(username: str):
 
                     # Get video
                     try:
-                        video_el = await page.query_selector('article video')
+                        video_el = await page.query_selector('video')
                         if video_el:
                             post['video'] = await video_el.get_attribute('src')
                     except:
@@ -125,30 +169,26 @@ async def fetch_instagram_posts_playwright(username: str):
 
                     # Get caption
                     try:
-                        caption_el = await page.query_selector('article h1, div[data-testid="post-comment-root"] span')
-                        if caption_el:
-                            post['caption'] = await caption_el.inner_text()
-                            post['caption'] = post['caption'].strip()
+                        for selector in ['h1', 'article h1', 'div[data-testid="post-comment-root"] span', 'ul li span']:
+                            caption_el = await page.query_selector(selector)
+                            if caption_el:
+                                text = (await caption_el.inner_text()).strip()
+                                if text:
+                                    post['caption'] = text
+                                    break
                     except:
                         post['caption'] = ''
-
-                    # Get likes if available
-                    try:
-                        likes_el = await page.query_selector('section span[class*="like"], button span')
-                        if likes_el:
-                            post['likes'] = await likes_el.inner_text()
-                    except:
-                        post['likes'] = ''
 
                     if post.get('image') or post.get('video'):
                         posts.append(post)
 
                 except Exception as e:
+                    print(f"[DEBUG] Failed to fetch post {link}: {e}")
                     continue
 
         except Exception as e:
             await browser.close()
-            return None, f"Browser error: {e}"
+            return None, f"Browser error: {str(e)[:300]}"
 
         await browser.close()
 
@@ -176,7 +216,8 @@ async def instagram_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         posts, profile_name = await fetch_instagram_posts_playwright(username)
     except Exception as e:
-        await status_msg.edit_text(f"❌ Unexpected error: `{e}`", parse_mode='Markdown')
+        error_msg = str(e)[:200]
+        await status_msg.edit_text(f"❌ Unexpected error:\n`{error_msg}`", parse_mode='Markdown')
         return
 
     if posts is None:
@@ -220,7 +261,7 @@ async def instagram_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except Exception as e:
             await update.message.reply_text(
-                f"⚠️ Could not send post {i+1}: `{e}`",
+                f"⚠️ Could not send post {i+1}: `{str(e)[:100]}`",
                 parse_mode='Markdown'
             )
             continue
