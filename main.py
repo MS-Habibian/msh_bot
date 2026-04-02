@@ -9,6 +9,7 @@ from handlers.dlp2 import dlp2_command
 from handlers.downloader import download_command, handle_reupload_callback
 from handlers.google import google_command
 from handlers.image import image_command
+from handlers.instagram import instagram_command
 
 # Setup logging
 logging.basicConfig(
@@ -44,6 +45,7 @@ def main() -> None:
 
     application.add_handler(CommandHandler("image", image_command))
 
+    application.add_handler(CommandHandler("ig", instagram_command))
 
 
     # Start the bot
