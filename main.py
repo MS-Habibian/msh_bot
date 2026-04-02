@@ -9,7 +9,9 @@ from handlers.dlp2 import dlp2_command
 from handlers.downloader import download_command, handle_reupload_callback
 from handlers.google import google_command
 from handlers.image import image_command
-from handlers.instagram import instagram_command
+# from handlers.instagram import instagram_command
+from telegram.ext import CommandHandler, CallbackQueryHandler
+from handlers.youtube import yt_command, handle_yt_download_callback
 
 # Setup logging
 logging.basicConfig(
@@ -45,7 +47,17 @@ def main() -> None:
 
     application.add_handler(CommandHandler("image", image_command))
 
-    application.add_handler(CommandHandler("ig", instagram_command))
+    # application.add_handler(CommandHandler("ig", instagram_command))
+        
+
+    # ... your bot setup code ...
+
+    # هندلر جستجوی یوتیوب
+    application.add_handler(CommandHandler("yt", yt_command))
+
+    # هندلر کلیک روی نتایج جستجوی یوتیوب (شناسایی با پترن ytdl:)
+    application.add_handler(CallbackQueryHandler(handle_yt_download_callback, pattern="^ytdl:"))
+
 
 
     # Start the bot
