@@ -7,10 +7,9 @@ from telegram.ext import ContextTypes
 from telegram.error import BadRequest
 
 from utils.youtube_helper import search_youtube_async, download_youtube_video_async
+# فرض می‌کنیم توابع split_file و format_size را دارید
 from utils.download_helper import format_size, split_file
-
-# ایمپورت تابع پاکسازی شما از فایل downloader (یا تعریف مجدد آن)
-from handlers.downloader import cleanup_folder_job 
+from handlers.downloader import cleanup_folder_job
 
 # --- 1. دستور جستجوی یوتیوب ---
 async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
