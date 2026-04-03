@@ -11,9 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 # Import your existing helper
-from utils import upload_parts_to_user
+from utils import split_file, upload_parts_to_user
 from utils.clean_up_folder_job import cleanup_folder_job
-from utils.download_helper import split_file
 
 # Initialize Docker client
 try:
