@@ -66,10 +66,19 @@ async def download_youtube_video_async(video_url: str, download_folder: str, pro
     # تنظیمات yt-dlp (دانلود بهترین کیفیت mp4)
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': os.path.join(download_folder, '%(title)s.%(ext)s'),
-        'progress_hooks': [yt_progress_hook],
-        'quiet': True,
-        'no_warnings': True,
+        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
+        'merge_output_format': 'mp4',
+        
+        # 👇 این بخش را برای دور زدن سیستم ضد ربات یوتیوب اضافه کنید 👇
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+                'client': ['android', 'ios']
+            }
+        },
+        
+        'quiet': False,
+        'no_warnings': False,
     }
 
     def _download():

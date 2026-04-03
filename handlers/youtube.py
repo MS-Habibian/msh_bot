@@ -131,6 +131,18 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
                 )
 
     except Exception as e:
-        await status_msg.edit_text(f"❌ *خطا در دانلود ویدیو:*\n`{str(e)}`", parse_mode="Markdown")
+        print(f"Error downloading YT video: {e}")
+        error_text = f"❌ *خطا در دانلود ویدیو:*\n`{str(e)}`"
+        try:
+            # تلاش برای ویرایش پیام قبلی
+            await status_msg.edit_text(error_text, parse_mode="Markdown")
+        except Exception as edit_err:
+            print(f"Could not edit message: {edit_err}")
+            # اگر ویرایش ناموفق بود، یک پیام جدید ارسال کن
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=error_text,
+                parse_mode="Markdown"
+            )
         if os.path.exists(download_folder):
             shutil.rmtree(download_folder)
