@@ -46,15 +46,17 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
     
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        # حالا output_dir به درستی تعریف شده و استفاده می‌شود
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
+        
+        # حذف کامل web و استفاده انحصاری از کلاینت‌های موبایل و تلویزیون
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],
-                'client': ['android', 'ios']
+                'client': ['android', 'ios', 'tv'],
+                'player_client': ['android', 'ios']
             }
         },
+        
         'quiet': False,
         'no_warnings': False,
     }
