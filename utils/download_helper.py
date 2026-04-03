@@ -4,6 +4,9 @@ import time
 import aiohttp
 import urllib.parse
 
+from utils import get_file_size_from_url
+from config import MAX_FILE_SIZE
+
 
 def format_size(bytes_size: int) -> str:
     """Converts bytes to a readable format (MB)."""
@@ -11,9 +14,15 @@ def format_size(bytes_size: int) -> str:
 
 
 async def download_file_async(url, dest_folder, progress_callback=None):
-    # Modified to save inside a specific dest_folder
-    os.makedirs(dest_folder, exist_ok=True)
+    # first check the download size limit
+    # TODO: different limit for admin, regular user
+    total_size = get_file_size_from_url(url)
+    if total_size > MAX_FILE_SIZE:
+        raise ValueError(
+            f"حجم فایل خواسته شده {format_size(total_size)} بیش از حد مجاز {format_size(MAX_FILE_SIZE)} است."
+        )
 
+    os.makedirs(dest_folder, exist_ok=True)
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             response.raise_for_status()
@@ -25,14 +34,6 @@ async def download_file_async(url, dest_folder, progress_callback=None):
                 filename = "downloaded_file.dat"
 
             filepath = os.path.join(dest_folder, filename)
-            total_size = int(response.headers.get("Content-Length", 0))
-            print("file size:", total_size)
-            # Telegram bot limit is 5GB (52,428,800 bytes)
-            if total_size > 5242880000:
-                raise ValueError(
-                    f"File is too large ({format_size(total_size)}). Telegram limit is 5 GB."
-                )
-
             downloaded_size = 0
             last_update_time = time.time()
 
@@ -48,28 +49,3 @@ async def download_file_async(url, dest_folder, progress_callback=None):
                             await progress_callback(downloaded_size, total_size)
                         last_update_time = now
             return filepath
-
-
-def split_file(filepath, chunk_size=20 * 1024 * 1024):  # 49 MB chunks
-    """Splits a file into binary chunks and returns a list of part paths."""
-    file_size = os.path.getsize(filepath)
-    if file_size <= chunk_size:
-        return [filepath]
-
-    part_files = []
-    part_num = 1
-    with open(filepath, "rb") as f:
-        while True:
-            chunk = f.read(chunk_size)
-            if not chunk:
-                break
-            # Create extensions like .part001, .part002
-            part_name = f"{filepath}.part{part_num:03d}"
-            with open(part_name, "wb") as p:
-                p.write(chunk)
-            part_files.append(part_name)
-            part_num += 1
-
-    # Remove the original large file to save disk space
-    os.remove(filepath)
-    return part_files

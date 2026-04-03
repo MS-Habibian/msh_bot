@@ -11,10 +11,10 @@ from telegram.ext import (
 from config import BOT_TOKEN, BASE_URL
 from handlers.commands import start_command, help_command
 from handlers.status import status_command
-from handlers.dlp import dlp_command
-from handlers.dlp2 import dlp2_command
-from handlers.downloader import download_command, handle_reupload_callback
-from handlers.google import google_command
+from handlers.dlp_command import dlp_command
+from handlers.dlp2_command import dlp2_command
+from handlers.download_command import download_command, handle_reupload_callback
+from handlers.google_command import google_command
 from handlers.image import image_command
 from database.session import init_db
 
