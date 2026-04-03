@@ -45,11 +45,15 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
     os.makedirs(output_dir, exist_ok=True)
     
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', 
-        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-        'cookiefile': 'cookie.txt', 
-        'quiet': False,
-        'no_warnings': False,
+      'format': 'best',
+      'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
+      'cookiefile': 'cookie.txt',
+      'quiet': False,
+      'no_warnings': False,
+      # Add these to bypass restrictions:
+      'nocheckcertificate': True,
+      'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
     }
 
     # اگر از progress_callback استفاده می‌کنید
