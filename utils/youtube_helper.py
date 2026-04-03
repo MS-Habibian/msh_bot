@@ -41,7 +41,6 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
         if progress_callback:
             total = stream.filesize
             downloaded = total - bytes_remaining
-            # فراخوانی امن در Async
             try:
                 loop = asyncio.get_event_loop()
                 if asyncio.iscoroutinefunction(progress_callback):
@@ -50,9 +49,17 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
                 pass
 
     def _download():
-        # استفاده از کلاینت وب برای دور زدن محدودیت‌های یوتیوب
-        yt = YouTube(url, on_progress_callback=on_progress, client='WEB')
-        # دریافت بهترین کیفیت زیر 1080p که صدا و تصویر باهم باشد
+        # نکته کلیدی اینجاست: 
+        # ۱. پارامتر use_po_token=True اضافه شده است.
+        # ۲. از کلاینت ANDROID یا WEB_CREATOR استفاده می‌کنیم که حساسیت کمتری دارند.
+        yt = YouTube(
+            url, 
+            on_progress_callback=on_progress, 
+            client='ANDROID', # یا 'WEB'
+            use_po_token=True
+        )
+        
+        # فیلتر برای گرفتن ویدیویی که صدا و تصویر یکپارچه داشته باشد
         video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
         
         if not video:
@@ -60,5 +67,6 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
             
         return video.download(output_path=output_dir)
 
+    # اجرای دانلود در یک Thread جداگانه برای قفل نشدن ربات
     file_path = await asyncio.to_thread(_download)
     return file_path
