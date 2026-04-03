@@ -9,6 +9,7 @@ from telegram.error import BadRequest
 
 from config import HOURS_TO_KEEP_FILES, SPLIT_CHUNK_SIZE
 from database.models import User
+from decorators.transactional_decorator import transactional_handler
 from services.billing_service import BillingManager
 from utils import split_file, upload_parts_to_user
 from utils.clean_up_folder_job import cleanup_folder_job
@@ -16,6 +17,7 @@ from utils.download_helper import download_file_async, format_size, get_file_siz
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
+@transactional_handler()
 async def download_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,

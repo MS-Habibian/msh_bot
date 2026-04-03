@@ -3,11 +3,13 @@ import html
 from telegram import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from database.models import User
+from decorators.transactional_decorator import transactional_handler
 from services.billing_service import BillingManager
 from utils.google_scraper import search_google  # We will update this utility below
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
+@transactional_handler()
 async def google_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,

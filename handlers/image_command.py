@@ -6,6 +6,7 @@ import asyncio
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from database.models import User
+from decorators.transactional_decorator import transactional_handler
 from services.billing_service import BillingManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +22,7 @@ except docker.errors.DockerException:
     print("Ensure Docker is running and the user has permissions.")
 
 
+@transactional_handler()
 async def image_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
