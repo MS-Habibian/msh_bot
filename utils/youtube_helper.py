@@ -45,7 +45,7 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
     os.makedirs(output_dir, exist_ok=True)
     
     ydl_opts = {
-        'format': 'best', 
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', 
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
         'cookiefile': 'cookie.txt', 
         'quiet': False,
