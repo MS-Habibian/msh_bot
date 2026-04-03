@@ -43,44 +43,22 @@ import aiohttp
 import os
 
 async def download_youtube_video_async(url: str, output_dir: str, progress_callback=None) -> str:
-    """دانلود ویدیو از یوتیوب با استفاده از Cobalt API v10"""
+    """دانلود ویدیو از یوتیوب"""
     
     os.makedirs(output_dir, exist_ok=True)
     
-    async with aiohttp.ClientSession() as session:
-        # درخواست لینک دانلود با API جدید
-        async with session.post(
-            'https://api.cobalt.tools/',
-            json={
-                'url': url,
-                'videoQuality': '720'
-            },
-            headers={
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
-        ) as resp:
-            data = await resp.json()
-            
-            if data.get('status') != 'tunnel':
-                raise Exception(f"خطا در دریافت لینک: {data.get('error', {}).get('code', 'نامشخص')}")
-            
-            download_url = data['url']
-        
-        # دانلود فایل
-        async with session.get(download_url) as resp:
-            filename = f"video_{url.split('=')[-1]}.mp4"
-            filepath = os.path.join(output_dir, filename)
-            
-            total_size = int(resp.headers.get('content-length', 0))
-            downloaded = 0
-            
-            with open(filepath, 'wb') as f:
-                async for chunk in resp.content.iter_chunked(8192):
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if progress_callback and total_size:
-                        await progress_callback(downloaded, total_size)
-            
-            return filepath
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
+        'cookiefile': 'cookie.txt',  # مسیر فایل کوکی
+        'quiet': False,
+    }
+
+    def _download():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info)
+
+    downloaded_file_path = await asyncio.to_thread(_download)
+    return downloaded_file_path
 
