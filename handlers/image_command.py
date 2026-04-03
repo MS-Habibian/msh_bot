@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 # Import your existing helper
-from utils import split_file, upload_parts_to_user
+from utils.split_file import split_file
+from utils.upload_parts_to_user import upload_parts_to_user
 from utils.clean_up_folder_job import cleanup_folder_job
 
 
