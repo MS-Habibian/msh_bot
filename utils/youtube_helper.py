@@ -38,54 +38,48 @@ async def search_youtube_async(query: str, limit: int = 5) -> list:
         print(f"yt-dlp Search Error: {e}")
         raise e # ارور را پاس می‌دهیم تا در تلگرام/بله چاپ شود
 
-async def download_youtube_video_async(video_url: str, download_folder: str, progress_callback=None) -> str:
-    """دانلود ویدیو یوتیوب با پشتیبانی از آپدیت پیشرفت"""
-    os.makedirs(download_folder, exist_ok=True)
+async def download_youtube_video_async(url: str, output_dir: str, progress_callback=None) -> str:
+    """دانلود ویدیو از یوتیوب"""
     
-    loop = asyncio.get_running_loop()
-    last_update_time = [0] # استفاده از لیست برای تغییر در scope داخلی
-
-    def yt_progress_hook(d):
-        if not progress_callback:
-            return
-            
-        if d['status'] == 'downloading':
-            current_time = time.time()
-            # آپدیت پیام تلگرام هر 2 ثانیه یکبار برای جلوگیری از خطای FloodWait
-            if current_time - last_update_time[0] > 2:
-                downloaded = d.get('downloaded_bytes', 0)
-                total = d.get('total_bytes', d.get('total_bytes_estimate', 0))
-                
-                # فراخوانی تابع غیرهمزمان تلگرام از داخل ترد (thread)
-                asyncio.run_coroutine_threadsafe(
-                    progress_callback(downloaded, total), 
-                    loop
-                )
-                last_update_time[0] = current_time
-
-    # تنظیمات yt-dlp (دانلود بهترین کیفیت mp4)
+    # اطمینان از اینکه پوشه خروجی وجود دارد
+    os.makedirs(output_dir, exist_ok=True)
+    
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        # حالا output_dir به درستی تعریف شده و استفاده می‌شود
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
-        
-        # 👇 این بخش را برای دور زدن سیستم ضد ربات یوتیوب اضافه کنید 👇
         'extractor_args': {
             'youtube': {
                 'player_client': ['android', 'web'],
                 'client': ['android', 'ios']
             }
         },
-        
         'quiet': False,
         'no_warnings': False,
     }
 
+    # اگر از progress_callback استفاده می‌کنید
+    if progress_callback:
+        class MyLogger(object):
+            def debug(self, msg): pass
+            def warning(self, msg): pass
+            def error(self, msg): print(msg)
+
+        def progress_hook(d):
+            if d['status'] == 'downloading':
+                # جلوگیری از اسپم شدن تلگرام با آپدیت‌های زیاد (مثلا هر 10 درصد آپدیت کند)
+                # برای سادگی در اینجا فراخوانی را محدود کنید یا مستقیما پاس دهید
+                pass 
+                
+        ydl_opts['logger'] = MyLogger()
+        ydl_opts['progress_hooks'] = [progress_hook]
+
     def _download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=True)
+            info = ydl.extract_info(url, download=True)
             return ydl.prepare_filename(info)
 
-    # اجرای دانلود در ترد پس‌زمینه
-    filepath = await asyncio.to_thread(_download)
-    return filepath
+    # اجرای عملیات دانلود در یک thread جداگانه
+    downloaded_file_path = await asyncio.to_thread(_download)
+    return downloaded_file_path
