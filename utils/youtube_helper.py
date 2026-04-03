@@ -43,24 +43,27 @@ import aiohttp
 import os
 
 async def download_youtube_video_async(url: str, output_dir: str, progress_callback=None) -> str:
-    """دانلود ویدیو از یوتیوب با استفاده از Cobalt API"""
+    """دانلود ویدیو از یوتیوب با استفاده از Cobalt API v10"""
     
     os.makedirs(output_dir, exist_ok=True)
     
     async with aiohttp.ClientSession() as session:
-        # درخواست لینک دانلود
+        # درخواست لینک دانلود با API جدید
         async with session.post(
-            'https://api.cobalt.tools/api/json',
+            'https://api.cobalt.tools/',
             json={
                 'url': url,
-                'vQuality': '720'  # یا '1080', 'max'
+                'videoQuality': '720'
             },
-            headers={'Accept': 'application/json', 'Content-Type': 'application/json'}
+            headers={
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
         ) as resp:
             data = await resp.json()
             
-            if data.get('status') != 'stream':
-                raise Exception(f"خطا در دریافت لینک: {data.get('text', 'نامشخص')}")
+            if data.get('status') != 'tunnel':
+                raise Exception(f"خطا در دریافت لینک: {data.get('error', {}).get('code', 'نامشخص')}")
             
             download_url = data['url']
         
@@ -69,9 +72,15 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
             filename = f"video_{url.split('=')[-1]}.mp4"
             filepath = os.path.join(output_dir, filename)
             
+            total_size = int(resp.headers.get('content-length', 0))
+            downloaded = 0
+            
             with open(filepath, 'wb') as f:
                 async for chunk in resp.content.iter_chunked(8192):
                     f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback and total_size:
+                        await progress_callback(downloaded, total_size)
             
             return filepath
 
