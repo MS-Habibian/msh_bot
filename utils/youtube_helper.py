@@ -1,4 +1,3 @@
-# utils/youtube_helper.py
 import asyncio
 import yt_dlp
 import os
@@ -6,17 +5,13 @@ import time
 
 async def search_youtube_async(query: str, limit: int = 5) -> list:
     """جستجوی یوتیوب به صورت غیرهمزمان"""
-    
-    # روش امن‌تر و مطمئن‌تر برای جستجو در yt-dlp
     search_query = f"ytsearch{limit}:{query}"
     
     ydl_opts = {
         'extract_flat': True,
-        'quiet': False,       # False کردیم تا ارورهای شبکه در لاگ سرور چاپ شود
+        'quiet': False,       
         'no_warnings': False,
-        
-        # ⚠️ مهم: اگر سرور شما در ایران است، یوتیوب فیلتر است و باید پروکسی تنظیم کنید
-        # 'proxy': 'http://127.0.0.1:10809', # یا آدرس پروکسی سرور خودتان
+        # 'proxy': 'http://127.0.0.1:10809', # در صورت نیاز از کامنت خارج کنید
     }
 
     def _search():
@@ -36,22 +31,49 @@ async def search_youtube_async(query: str, limit: int = 5) -> list:
         return videos
     except Exception as e:
         print(f"yt-dlp Search Error: {e}")
-        raise e # ارور را پاس می‌دهیم تا در تلگرام/بله چاپ شود
+        raise e
 
-# utils/youtube_helper.py
-import aiohttp
-import os
 
 async def download_youtube_video_async(url: str, output_dir: str, progress_callback=None) -> str:
-    """دانلود ویدیو از یوتیوب"""
+    """دانلود ویدیو از یوتیوب با پشتیبانی از نوار پیشرفت"""
     
     os.makedirs(output_dir, exist_ok=True)
     
+    # گرفتن Event Loop برای اجرای تابع async پیشرفت در داخل thread
+    loop = asyncio.get_running_loop()
+    last_update_time = [0] # استفاده از لیست برای تغییر مقدار در توابع داخلی (nonlocal)
+
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            current_time = time.time()
+            # آپدیت پیام تلگرام هر 3 ثانیه یکبار برای جلوگیری از ارور FloodWait
+            if current_time - last_update_time[0] > 3:
+                downloaded = d.get('downloaded_bytes', 0)
+                total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                
+                if progress_callback:
+                    # فراخوانی امن تابع async از داخل یک thread همزمان
+                    asyncio.run_coroutine_threadsafe(
+                        progress_callback(downloaded, total), loop
+                    )
+                last_update_time[0] = current_time
+
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        # انتخاب بهترین ویدیو تا کیفیت 1080p + بهترین صدا (نیاز به ffmpeg دارد)
+        # اگر ffmpeg نباشد یا فرمت نباشد، میرود سراغ بهترین فرمت تکی در دسترس
+        'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-        'cookiefile': 'cookie.txt',  # مسیر فایل کوکی
-        'quiet': False,
+        'quiet': True,
+        'no_warnings': True,
+        
+        # ⚠️ راهکار جدید برای دور زدن بلاک‌های یوتیوب (بسیار مهم)
+        'extractor_args': {'youtube': ['player_client=android,web']},
+        
+        # اتصال هوک پیشرفت به yt-dlp
+        'progress_hooks': [progress_hook],
+        
+        # 'cookiefile': 'cookie.txt',  # فقط اگر فایل کوکی سالم و آپدیت دارید از کامنت خارج کنید
     }
 
     def _download():
@@ -61,4 +83,3 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
 
     downloaded_file_path = await asyncio.to_thread(_download)
     return downloaded_file_path
-
