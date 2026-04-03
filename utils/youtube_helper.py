@@ -40,6 +40,9 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
     # برای جلوگیری از اسپم شدن تلگرام و ارور Flood Control
     last_update_time = [0.0]
     
+    # گرفتن Event Loop ترد اصلی (Main Thread) قبل از ورود به ترد دانلود
+    main_loop = asyncio.get_running_loop()
+    
     def my_hook(d):
         if d['status'] == 'downloading':
             if progress_callback:
@@ -51,15 +54,18 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
                     downloaded = d.get('downloaded_bytes', 0)
                     total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
                     
-                    loop = asyncio.get_event_loop()
+                    # استفاده از Event loop ترد اصلی برای اجرای Coroutine
                     if asyncio.iscoroutinefunction(progress_callback):
-                        asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), loop)
+                        asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), main_loop)
 
     ydl_opts = {
         'format': 'b',  # بهترین کیفیتی که صدا و تصویر با هم ادغام شده باشند
         'outtmpl': os.path.join(output_dir, '%(title)s_%(id)s.%(ext)s'),
         'cookiefile': 'cookie.txt', # استفاده از کوکی شما
-        'js_runtimes': ['node'],    # مجبور کردن yt-dlp به استفاده از Node.js
+        
+        # اصلاح ارور js_runtimes (تبدیل لیست به دیکشنری)
+        'js_runtimes': {'node': {}},    
+        
         'progress_hooks': [my_hook],
         'quiet': True,
         'no_warnings': True,
