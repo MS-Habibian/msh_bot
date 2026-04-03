@@ -59,21 +59,18 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
                 last_update_time[0] = current_time
 
     ydl_opts = {
-        # انتخاب بهترین ویدیو تا کیفیت 1080p + بهترین صدا (نیاز به ffmpeg دارد)
-        # اگر ffmpeg نباشد یا فرمت نباشد، میرود سراغ بهترین فرمت تکی در دسترس
         'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
         'quiet': True,
         'no_warnings': True,
         
-        # ⚠️ راهکار جدید برای دور زدن بلاک‌های یوتیوب (بسیار مهم)
-        'extractor_args': {'youtube': ['player_client=android,web']},
+        # کلاینت‌های مختلف را تست می‌کنیم تا سخت‌گیری یوتیوب کمتر شود
+        'extractor_args': {'youtube': ['player_client=ios,android,web']},
         
-        # اتصال هوک پیشرفت به yt-dlp
         'progress_hooks': [progress_hook],
         
-        # 'cookiefile': 'cookie.txt',  # فقط اگر فایل کوکی سالم و آپدیت دارید از کامنت خارج کنید
+        # ✅ این خط را اضافه کنید و مسیر دقیق فایل کوکی را بدهید
+        'cookiefile': 'cookie.txt',  
     }
 
     def _download():
