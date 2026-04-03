@@ -45,21 +45,13 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
     os.makedirs(output_dir, exist_ok=True)
     
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-        'merge_output_format': 'mp4',
-        
-        # حذف کامل web و استفاده انحصاری از کلاینت‌های موبایل و تلویزیون
-        'extractor_args': {
-            'youtube': {
-                'client': ['android', 'ios', 'tv'],
-                'player_client': ['android', 'ios']
-            }
-        },
-        
-        'quiet': False,
-        'no_warnings': False,
-    }
+       'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+       'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
+       'merge_output_format': 'mp4',
+       'cookiefile': 'cookie.txt',
+       'quiet': False,
+       'no_warnings': False,
+   }
 
     # اگر از progress_callback استفاده می‌کنید
     if progress_callback:
