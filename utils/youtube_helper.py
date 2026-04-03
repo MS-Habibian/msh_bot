@@ -2,17 +2,21 @@
 import asyncio
 import yt_dlp
 import os
-import subprocess
-import sys
+import time
 
 async def search_youtube_async(query: str, limit: int = 5) -> list:
-    """جستجوی یوتیوب"""
+    """جستجوی یوتیوب به صورت غیرهمزمان"""
+    
+    # روش امن‌تر و مطمئن‌تر برای جستجو در yt-dlp
     search_query = f"ytsearch{limit}:{query}"
     
     ydl_opts = {
         'extract_flat': True,
-        'quiet': False,
+        'quiet': False,       # False کردیم تا ارورهای شبکه در لاگ سرور چاپ شود
         'no_warnings': False,
+        
+        # ⚠️ مهم: اگر سرور شما در ایران است، یوتیوب فیلتر است و باید پروکسی تنظیم کنید
+        # 'proxy': 'http://127.0.0.1:10809', # یا آدرس پروکسی سرور خودتان
     }
 
     def _search():
@@ -31,85 +35,43 @@ async def search_youtube_async(query: str, limit: int = 5) -> list:
                 })
         return videos
     except Exception as e:
-        print(f"Search Error: {e}")
-        raise e
+        print(f"yt-dlp Search Error: {e}")
+        raise e # ارور را پاس می‌دهیم تا در تلگرام/بله چاپ شود
+
+# utils/youtube_helper.py
+import aiohttp
+import os
 
 async def download_youtube_video_async(url: str, output_dir: str, progress_callback=None) -> str:
-    """دانلود هوشمند با اطمینان از خروجی MP4"""
+    """دانلود ویدیو از یوتیوب با استفاده از Cobalt API"""
     
     os.makedirs(output_dir, exist_ok=True)
     
-    # تعریف پست-پردازنده برای تبدیل خودکار به MP4
-    # این کار باعث می‌شود حتی اگر فایل webm دانلود شد، به mp4 تبدیل شود
-    postprocessors = [{
-        'key': 'FFmpegVideoConvertor',
-        'preferedformat': 'mp4',
-        'other': '-c:v libx264 -c:a aac', # تنظیمات استاندارد برای تلگرام
-    }]
-
-    ydl_opts = {
-        # 🔥 کلید تغییر: 
-        # 'best' یعنی بهترین کیفیت موجود را بگیر (چه ویدیو+صدا جدا باشند چه یکی باشند).
-        # اگر جدا بودند، yt-dlp سعی میکند ترکیبشان کند.
-        # اگر نتوانست ترکیب کند، بهترین فرمت تک (مثلا webm) را می‌گیرد.
-        'format': 'best', 
-        
-        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-        'quiet': False,
-        'no_warnings': False,
-        'ignoreerrors': False,
-        
-        # اضافه کردن پست-پردازنده برای تبدیل نهایی
-        'postprocessors': postprocessors,
-        
-        # جلوگیری از دانلود مجدد اگر فایل قبلاً دانلود شده (اختیاری)
-        'writethumbnail': False,
-    }
-
-    def _download():
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+    async with aiohttp.ClientSession() as session:
+        # درخواست لینک دانلود
+        async with session.post(
+            'https://api.cobalt.tools/api/json',
+            json={
+                'url': url,
+                'vQuality': '720'  # یا '1080', 'max'
+            },
+            headers={'Accept': 'application/json', 'Content-Type': 'application/json'}
+        ) as resp:
+            data = await resp.json()
             
-            # پیدا کردن فایل نهایی (ممکن است نام فایل بعد از تبدیل تغییر کرده باشد)
-            # yt-dlp معمولا فایل اصلی را برمی‌گرداند، اما مطمئن شویم که پسوند mp4 دارد
-            filename = ydl.prepare_filename(info)
+            if data.get('status') != 'stream':
+                raise Exception(f"خطا در دریافت لینک: {data.get('text', 'نامشخص')}")
             
-            # اگر فایل اصلی mp4 نبود، شاید نامش را تغییر داده باشد (مثلا .webm.mp4)
-            # یا شاید تبدیل انجام نشده باشد. بیایید پوشه را چک کنیم تا فایل mp4 را پیدا کنیم.
-            files = [f for f in os.listdir(os.path.dirname(filename)) if f.endswith('.mp4')]
-            if files:
-                return os.path.join(os.path.dirname(filename), files[0])
-            
-            return filename
-
-    try:
-        downloaded_file_path = await asyncio.to_thread(_download)
+            download_url = data['url']
         
-        # بررسی نهایی: آیا فایل وجود دارد؟
-        if not os.path.exists(downloaded_file_path):
-            # تلاش برای پیدا کردن فایل در پوشه با پسوند mp4
-            folder_path = os.path.dirname(downloaded_file_path)
-            mp4_files = [f for f in os.listdir(folder_path) if f.endswith('.mp4')]
-            if mp4_files:
-                downloaded_file_path = os.path.join(folder_path, mp4_files[0])
-            else:
-                raise FileNotFoundError("فایل ویدیویی یافت نشد.")
-                
-        return downloaded_file_path
+        # دانلود فایل
+        async with session.get(download_url) as resp:
+            filename = f"video_{url.split('=')[-1]}.mp4"
+            filepath = os.path.join(output_dir, filename)
+            
+            with open(filepath, 'wb') as f:
+                async for chunk in resp.content.iter_chunked(8192):
+                    f.write(chunk)
+            
+            return filepath
 
-    except Exception as e:
-        # اگر ارور خاصی از yt-dlp آمد، جزئیات بیشتر بدهیم
-        error_msg = str(e)
-        if "Requested format is not available" in error_msg:
-            # این خطا دیگر نباید بیاید با استراتژی جدید، اما اگر آمد:
-            # یعنی ویدیو اصلاً قابل دانلود نیست (مثلاً خصوصی یا حذف شده)
-            raise Exception(f"ویدیو قابل دسترسی نیست یا فرمت‌های آن موجود نمی‌باشد. ({error_msg})")
-        raise e
-
-# تابع کمکی برای نمایش حجم (اگر در فایل دیگر نیست)
-def format_size(num):
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if num < 1024.0:
-            return f"{num:.2f} {unit}"
-        num /= 1024.0
-    return f"{num:.2f} TB"
