@@ -15,11 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from utils import split_file, upload_parts_to_user
 from utils.clean_up_folder_job import cleanup_folder_job
 
-# Initialize Docker client
-try:
-    docker_client = docker.from_env()
-except docker.errors.DockerException:
-    print("Ensure Docker is running and the user has permissions.")
 
 
 @transactional_handler()
@@ -53,6 +48,7 @@ async def image_command(
     try:
         loop = asyncio.get_running_loop()
 
+        docker_client = docker.from_env()
         # 1. Pull the image
         image = await loop.run_in_executor(None, docker_client.images.pull, image_name)
         await status_msg.edit_text(f"✅ Image pulled! Saving to tar file...")

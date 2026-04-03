@@ -18,13 +18,14 @@ async def google_command(
     billing: BillingManager,
 ):
     # Check if the user provided a search query
-    billing.charge(cost_requests=1, action="/google")
     if not context.args:
+        # TODO: change to raise error:
         await update.message.reply_text(
             "لطفاً یک عبارت برای جستجو وارد کنید. مثال:\n`/google python programming`",
             parse_mode="Markdown",
         )
         return
+    billing.charge(cost_requests=1, action="/google")
 
     query = " ".join(context.args)
     # Escape query to prevent HTML parsing errors in Telegram
