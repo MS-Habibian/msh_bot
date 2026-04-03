@@ -45,19 +45,15 @@ async def download_youtube_video_async(url: str, output_dir: str, progress_callb
     os.makedirs(output_dir, exist_ok=True)
     
     ydl_opts = {
-        # Changed this line to be more flexible:
+        # 'best' tells yt-dlp to just grab the single best pre-merged file available.
+        # This is the safest option and prevents format mismatch errors.
         'format': 'bestvideo+bestaudio/best', 
-        
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-        'merge_output_format': 'mp4', # yt-dlp will automatically convert/merge it to mp4 for you
+        'merge_output_format': 'mp4',
         'cookiefile': 'cookie.txt', 
         
-        'extractor_args': {
-            'youtube': {
-                'client': ['android', 'ios', 'tv'],
-                'player_client': ['android', 'ios']
-            }
-        },
+        # NOTE: We have COMPLETELY DELETED the 'extractor_args' block!
+        
         'quiet': False,
         'no_warnings': False,
     }
