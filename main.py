@@ -11,7 +11,7 @@ from handlers.google import google_command
 from handlers.image import image_command
 # from handlers.instagram import instagram_command
 from telegram.ext import CommandHandler, CallbackQueryHandler
-from handlers.youtube import yt_command, handle_yt_download_callback
+from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback
 
 # Setup logging
 logging.basicConfig(
@@ -57,6 +57,8 @@ def main() -> None:
 
     # هندلر کلیک روی نتایج جستجوی یوتیوب (شناسایی با پترن ytdl:)
     application.add_handler(CallbackQueryHandler(handle_yt_download_callback, pattern="^ytdl:"))
+    application.add_handler(CallbackQueryHandler(handle_yt_format_callback, pattern=r"^ytfmt:"))
+
 
 
 

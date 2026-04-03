@@ -4,22 +4,13 @@ import os
 import time
 
 async def search_youtube_async(query: str, limit: int = 5) -> list:
-    """جستجوی یوتیوب به صورت غیرهمزمان"""
     search_query = f"ytsearch{limit}:{query}"
-    
-    ydl_opts = {
-        'extract_flat': True,
-        'quiet': True,       
-        'no_warnings': True,
-    }
-
+    ydl_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
     def _search():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(search_query, download=False)
-
     try:
         result = await asyncio.to_thread(_search)
-        
         videos = []
         if result and 'entries' in result:
             for entry in result['entries']:
@@ -32,40 +23,58 @@ async def search_youtube_async(query: str, limit: int = 5) -> list:
         print(f"yt-dlp Search Error: {e}")
         raise e
 
+async def get_youtube_qualities_async(video_url: str) -> list:
+    """دریافت کیفیت‌های ویدیویی موجود (رزولوشن‌ها)"""
+    ydl_opts = {
+        'cookiefile': 'cookie.txt',
+        'js_runtimes': {'node': {}},
+        'quiet': True,
+        'no_warnings': True,
+    }
+    def _get_info():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(video_url, download=False)
+            
+    try:
+        info = await asyncio.to_thread(_get_info)
+        formats = info.get('formats', [])
+        
+        # استخراج رزولوشن‌های یکتا (فقط آنهایی که ویدیو دارند)
+        resolutions = set()
+        for f in formats:
+            height = f.get('height')
+            if height and f.get('vcodec') != 'none':
+                resolutions.add(height)
+                
+        # مرتب‌سازی کیفیت‌ها (از کم به زیاد)
+        sorted_res = sorted(list(resolutions))
+        return sorted_res
+    except Exception as e:
+        print(f"Error fetching formats: {e}")
+        return []
 
-async def download_youtube_video_async(url: str, output_dir: str, progress_callback=None) -> str:
-    """دانلود ویدیو یوتیوب با استفاده از yt-dlp بر اساس تنظیماتی که در ترمینال جواب داد"""
+async def download_youtube_video_async(url: str, output_dir: str, format_str: str = 'b', progress_callback=None) -> str:
+    """دانلود ویدیو یوتیوب با فرمت درخواستی"""
     os.makedirs(output_dir, exist_ok=True)
-    
-    # برای جلوگیری از اسپم شدن تلگرام و ارور Flood Control
     last_update_time = [0.0]
-    
-    # گرفتن Event Loop ترد اصلی (Main Thread) قبل از ورود به ترد دانلود
     main_loop = asyncio.get_running_loop()
     
     def my_hook(d):
         if d['status'] == 'downloading':
             if progress_callback:
                 current_time = time.time()
-                # هر ۳ ثانیه یکبار پیام تلگرام آپدیت شود
                 if current_time - last_update_time[0] > 3:
                     last_update_time[0] = current_time
-                    
                     downloaded = d.get('downloaded_bytes', 0)
                     total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                    
-                    # استفاده از Event loop ترد اصلی برای اجرای Coroutine
                     if asyncio.iscoroutinefunction(progress_callback):
                         asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), main_loop)
 
     ydl_opts = {
-        'format': 'b',  # بهترین کیفیتی که صدا و تصویر با هم ادغام شده باشند
+        'format': format_str, # استفاده از فرمت انتخابی کاربر
         'outtmpl': os.path.join(output_dir, '%(title)s_%(id)s.%(ext)s'),
-        'cookiefile': 'cookie.txt', # استفاده از کوکی شما
-        
-        # اصلاح ارور js_runtimes (تبدیل لیست به دیکشنری)
+        'cookiefile': 'cookie.txt', 
         'js_runtimes': {'node': {}},    
-        
         'progress_hooks': [my_hook],
         'quiet': True,
         'no_warnings': True,
