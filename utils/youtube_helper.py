@@ -1,7 +1,8 @@
 import asyncio
 import yt_dlp
 import os
-import time
+import aiohttp
+import aiofiles
 
 async def search_youtube_async(query: str, limit: int = 5) -> list:
     """جستجوی یوتیوب به صورت غیرهمزمان"""
@@ -35,48 +36,50 @@ async def search_youtube_async(query: str, limit: int = 5) -> list:
 
 
 async def download_youtube_video_async(url: str, output_dir: str, progress_callback=None) -> str:
-    """دانلود ویدیو از یوتیوب با پشتیبانی از نوار پیشرفت"""
-    
     os.makedirs(output_dir, exist_ok=True)
     
-    # گرفتن Event Loop برای اجرای تابع async پیشرفت در داخل thread
-    loop = asyncio.get_running_loop()
-    last_update_time = [0] # استفاده از لیست برای تغییر مقدار در توابع داخلی (nonlocal)
-
-    def progress_hook(d):
-        if d['status'] == 'downloading':
-            current_time = time.time()
-            # آپدیت پیام تلگرام هر 3 ثانیه یکبار برای جلوگیری از ارور FloodWait
-            if current_time - last_update_time[0] > 3:
-                downloaded = d.get('downloaded_bytes', 0)
-                total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                
-                if progress_callback:
-                    # فراخوانی امن تابع async از داخل یک thread همزمان
-                    asyncio.run_coroutine_threadsafe(
-                        progress_callback(downloaded, total), loop
-                    )
-                last_update_time[0] = current_time
-
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-        'quiet': True,
-        'no_warnings': True,
-        
-        # کلاینت‌های مختلف را تست می‌کنیم تا سخت‌گیری یوتیوب کمتر شود
-        'extractor_args': {'youtube': ['player_client=ios,android,web']},
-        
-        'progress_hooks': [progress_hook],
-        
-        # ✅ این خط را اضافه کنید و مسیر دقیق فایل کوکی را بدهید
-        'cookiefile': 'cookie.txt',  
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    
+    payload = {
+        "url": url,
+        "vQuality": "720", # کیفیت مورد نظر
+        "isAudioOnly": False
     }
 
-    def _download():
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info)
+    async with aiohttp.ClientSession() as session:
+        # درخواست به API کوبالت برای دریافت لینک مستقیم
+        async with session.post("https://api.cobalt.tools/api/json", json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                raise Exception("Failed to get download link from Cobalt API")
+            
+            data = await resp.json()
+            if "url" not in data:
+                raise Exception(f"Cobalt API Error: {data.get('text', 'Unknown')}")
+                
+            download_url = data["url"]
+            filename = data.get("filename", "video.mp4")
+            if not filename.endswith('.mp4'):
+                filename += ".mp4"
+                
+            file_path = os.path.join(output_dir, filename)
 
-    downloaded_file_path = await asyncio.to_thread(_download)
-    return downloaded_file_path
+        # دانلود فایل از لینک مستقیم به دست آمده
+        async with session.get(download_url) as resp:
+            if resp.status != 200:
+                raise Exception("Failed to download the actual video file")
+                
+            total_size = int(resp.headers.get('content-length', 0))
+            downloaded = 0
+            
+            async with aiofiles.open(file_path, mode='wb') as f:
+                async for chunk in resp.content.iter_chunked(1024 * 1024): # تکه های 1 مگابایتی
+                    await f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback:
+                        # به‌روزرسانی پیشرفت (می‌توانید منطق تاخیر ۳ ثانیه‌ای را اینجا پیاده کنید)
+                        await progress_callback(downloaded, total_size)
+
+    return file_path
