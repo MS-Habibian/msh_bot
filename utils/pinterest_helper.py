@@ -1,19 +1,27 @@
 import asyncio
+# در نسخه جدید ممکن است نام ایمپورت همچنان duckduckgo_search باشد اما پکیج ddgs نصب شده است
 from duckduckgo_search import DDGS
 
 async def search_pinterest_async(query: str, limit: int = 10) -> list:
     """جستجوی تصاویر در پینترست با استفاده از داک‌داک‌گو"""
-    # Adding site:pinterest.com ensures we only get Pinterest images
-    search_query = f"{query} site:pinterest.com"
+    # دقت کنید که کلمه /pin به اشتباه در کوئری شما ارسال شده بود، آن را تمیز می‌کنیم
+    clean_query = query.replace('/pin', '').strip()
+    search_query = f"{clean_query} site:pinterest.com"
     
     def _search():
+        # اگر سرور شما در دیتاسنتر معروفی است که بن شده (مثل هتزنر)، ممکن است به پروکسی نیاز داشته باشید:
+        # proxy = "http://username:password@proxyserver:port"
+        # with DDGS(proxy=proxy) as ddgs:
         with DDGS() as ddgs:
-            results = list(ddgs.images(search_query, max_results=limit))
+            # استفاده از پارامتر safesearch خاموش برای نتایج بهتر
+            results = list(ddgs.images(search_query, max_results=limit, safesearch='off'))
             return results
             
     try:
         results = await asyncio.to_thread(_search)
-        # return a cleaned list of dicts with thumbnail and original url
+        if not results:
+            return []
+            
         return [
             {
                 'id': str(i),
