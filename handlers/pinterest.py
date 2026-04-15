@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from telegram.ext import ContextTypes
 # from utils.pinterest_helper import search_pinterest_async
-from utils.pinterest_helper import search_pinterest_async, search_pinterest_google, search_pinterest_rss
+from utils.pinterest_helper import search_pinterest_rss
 
 
 async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
