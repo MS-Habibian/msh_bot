@@ -46,10 +46,11 @@ async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await status_msg.edit_text("❌ نتیجه‌ای یافت نشد.")
             return
 
-        keyboard = [[InlineKeyboardButton(f"انتخاب ویدیوی #{i}", callback_data=f"ytfmt:{vid['id']}")] 
+        # Added duration to both buttons and text list
+        keyboard = [[InlineKeyboardButton(f"🎬 انتخاب #{i} (⏱ {vid['duration']})", callback_data=f"ytfmt:{vid['id']}")] 
                     for i, vid in enumerate(results, start=1)]
         
-        text = "🎥 *نتایج جستجوی یوتیوب:*\n\n" + "\n".join([f"{i}. {vid['title']}" for i, vid in enumerate(results, start=1)])
+        text = "🎥 *نتایج جستجوی یوتیوب:*\n\n" + "\n".join([f"{i}. ⏱ `{vid['duration']}` | {vid['title']}" for i, vid in enumerate(results, start=1)])
         
         await status_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
@@ -93,22 +94,27 @@ async def handle_yt_format_callback(update: Update, context: ContextTypes.DEFAUL
     _, video_id = query.data.split(":")
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
-    await query.edit_message_text("⏳ در حال استخراج کیفیت‌های موجود...\nاین عملیات ممکن است کمی طول بکشد.")
+    # KEY CHANGE: Send a NEW message instead of editing the search results
+    status_msg = await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text="⏳ در حال استخراج کیفیت‌های موجود...\nاین عملیات ممکن است کمی طول بکشد.",
+        reply_to_message_id=query.message.message_id
+    )
 
     try:
         resolutions = await get_youtube_qualities_async(video_url)
         if not resolutions:
-            await query.edit_message_text("❌ کیفیت قابل دانلودی یافت نشد یا ویدیو در دسترس نیست.")
+            await status_msg.edit_text("❌ کیفیت قابل دانلودی یافت نشد یا ویدیو در دسترس نیست.")
             return
 
         reply_markup = _build_quality_keyboard(video_id, resolutions)
-        await query.edit_message_text(
-            text=f"🎥 ویدیو پیدا شد!\nلطفاً کیفیت مورد نظر خود را انتخاب کنید:\n`{video_url}`",
+        await status_msg.edit_text(
+            text=f"🎥 ویدیو انتخاب شد!\nلطفاً کیفیت مورد نظر خود را انتخاب کنید:\n`{video_url}`",
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
     except Exception as e:
-        await query.edit_message_text(text=f"❌ خطا در دریافت کیفیت‌ها:\n`{str(e)}`")
+        await status_msg.edit_text(text=f"❌ خطا در دریافت کیفیت‌ها:\n`{str(e)}`")
 
 
 async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -150,7 +156,6 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
 
         context.job_queue.run_once(cleanup_folder_job, 5 * 3600, data=download_folder, name=f"cleanup_{file_id}")
 
-        # FIX: Generate a 1D list of buttons first, then chunk them into a 2D list (rows of 3)
         buttons = [InlineKeyboardButton(f"Part {i+1}", callback_data=f"reup:{file_id}:{i}") for i in range(len(part_files))]
         keyboard = [buttons[i:i+3] for i in range(0, len(buttons), 3)]
         

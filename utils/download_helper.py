@@ -11,6 +11,7 @@ def format_size(bytes_size: int) -> str:
     """Converts bytes to a readable format (MB)."""
     return f"{bytes_size / (1024 * 1024):.2f} MB"
 
+
 async def download_file_async(url, dest_folder, progress_callback=None):
     os.makedirs(dest_folder, exist_ok=True)
 

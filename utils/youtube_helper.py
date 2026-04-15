@@ -3,6 +3,16 @@ import yt_dlp
 import os
 import time
 
+def format_duration(seconds: int | float | None) -> str:
+    """تبدیل ثانیه به فرمت خوانای زمان"""
+    if not seconds:
+        return "N/A"
+    mins, secs = divmod(int(seconds), 60)
+    hours, mins = divmod(mins, 60)
+    if hours > 0:
+        return f"{hours}:{mins:02d}:{secs:02d}"
+    return f"{mins}:{secs:02d}"
+
 async def search_youtube_async(query: str, limit: int = 5) -> list:
     search_query = f"ytsearch{limit}:{query}"
     ydl_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
@@ -13,7 +23,12 @@ async def search_youtube_async(query: str, limit: int = 5) -> list:
             
     try:
         result = await asyncio.to_thread(_search)
-        return [{'id': e.get('id'), 'title': e.get('title', 'Unknown Title')} for e in result.get('entries', [])]
+        # Added duration extraction here
+        return [{
+            'id': e.get('id'), 
+            'title': e.get('title', 'Unknown Title'),
+            'duration': format_duration(e.get('duration'))
+        } for e in result.get('entries', [])]
     except Exception as e:
         print(f"yt-dlp Search Error: {e}")
         raise e
