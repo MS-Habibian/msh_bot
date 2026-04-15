@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 
 # توابع ایمپورت شده بر اساس ساختار شما
 from utils.youtube_helper import search_youtube_async, get_youtube_qualities_async, download_youtube_video_async
-from utils.download_helper import format_size, split_file
+from utils.download_helper import format_size, split_file, split_media_playable
 from handlers.downloader import cleanup_folder_job
 
 
@@ -157,7 +157,6 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
     video_url = f"https://www.youtube.com/watch?v={video_id}"
 
     # تبدیل کیفیت انتخابی به فرمت استاندارد yt-dlp
-    # تبدیل کیفیت انتخابی به فرمت استاندارد yt-dlp
     if quality == 'best':
         format_str = 'b'
     elif quality == 'audio':
@@ -180,7 +179,6 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
         parse_mode="Markdown"
     )
 
-
     async def update_progress(downloaded, total):
         try:
             if total > 0:
@@ -201,8 +199,12 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
             text="✂️ در حال پردازش و تقسیم فایل به تکه‌های زیر ۲۰ مگابایت..."
         )
         
-        # تقسیم فایل (الگوریتم split_file شما اینجا فایل را 20 مگابایتی می‌کند)
-        part_files = split_file(filepath)
+        # ------------------ تغییر اصلی در این قسمت است ------------------
+        if quality == 'audio':
+            part_files = split_media_playable(filepath)
+        else:
+            part_files = split_file(filepath)
+        # ----------------------------------------------------------------
 
         context.job_queue.run_once(cleanup_folder_job, 5 * 3600, data=download_folder, name=f"cleanup_{file_id}")
 
@@ -227,13 +229,24 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
         for i, part_path in enumerate(part_files):
             try:
                 with open(part_path, "rb") as f:
-                    await context.bot.send_document(
-                        chat_id=chat_id,
-                        document=f,
-                        caption=f"🎥 بخش {i+1} از {len(part_files)}",
-                        read_timeout=120, write_timeout=300, connect_timeout=120,
-                        reply_to_message_id=message_id 
-                    )
+                    # ------------------ تغییر برای ارسال فایل صوتی ------------------
+                    if quality == 'audio':
+                        await context.bot.send_audio(
+                            chat_id=chat_id,
+                            audio=f,
+                            caption=f"🎵 بخش {i+1} از {len(part_files)}",
+                            read_timeout=120, write_timeout=300, connect_timeout=120,
+                            reply_to_message_id=message_id 
+                        )
+                    else:
+                        await context.bot.send_document(
+                            chat_id=chat_id,
+                            document=f,
+                            caption=f"🎥 بخش {i+1} از {len(part_files)}",
+                            read_timeout=120, write_timeout=300, connect_timeout=120,
+                            reply_to_message_id=message_id 
+                        )
+                    # ----------------------------------------------------------------
             except Exception:
                 await context.bot.send_message(chat_id=chat_id, text=f"❌ آپلود بخش {i+1} ناموفق بود.")
 
@@ -245,3 +258,4 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
             await context.bot.send_message(chat_id=chat_id, text=error_text, parse_mode="Markdown")
         if os.path.exists(download_folder):
             shutil.rmtree(download_folder)
+

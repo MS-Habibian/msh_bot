@@ -3,12 +3,13 @@ import os
 import time
 import aiohttp
 import urllib.parse
-
+import subprocess
+import math
+import glob
 
 def format_size(bytes_size: int) -> str:
     """Converts bytes to a readable format (MB)."""
     return f"{bytes_size / (1024 * 1024):.2f} MB"
-
 
 async def download_file_async(url, dest_folder, progress_callback=None):
     # Modified to save inside a specific dest_folder
@@ -50,7 +51,7 @@ async def download_file_async(url, dest_folder, progress_callback=None):
             return filepath
 
 
-def split_file(filepath, chunk_size=20 * 1024 * 1024):  # 49 MB chunks
+def split_file(filepath, chunk_size=20 * 1024 * 1024):  # 20 MB chunks
     """Splits a file into binary chunks and returns a list of part paths."""
     file_size = os.path.getsize(filepath)
     if file_size <= chunk_size:
@@ -73,3 +74,48 @@ def split_file(filepath, chunk_size=20 * 1024 * 1024):  # 49 MB chunks
     # Remove the original large file to save disk space
     os.remove(filepath)
     return part_files
+
+
+def split_media_playable(filepath, max_size_mb=19):
+    """Splits audio/video into playable segments using FFmpeg and returns paths."""
+    max_size_bytes = max_size_mb * 1024 * 1024
+    file_size = os.path.getsize(filepath)
+    
+    if file_size <= max_size_bytes:
+        return [filepath]
+        
+    parts_count = math.ceil(file_size / max_size_bytes)
+    
+    try:
+        cmd_duration = [
+            'ffprobe', '-v', 'error', '-show_entries', 
+            'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath
+        ]
+        duration_str = subprocess.check_output(cmd_duration).decode('utf-8').strip()
+        total_duration = float(duration_str)
+    except Exception as e:
+        print(f"Error getting duration: {e}")
+        total_duration = 3600  
+
+    segment_time = math.ceil(total_duration / parts_count)
+    
+    base_name, ext = os.path.splitext(filepath)
+    output_pattern = f"{base_name}_part%03d{ext}"
+    
+    cmd_split = [
+        'ffmpeg', '-i', filepath,
+        '-f', 'segment',
+        '-segment_time', str(segment_time),
+        '-c', 'copy',
+        output_pattern
+    ]
+    
+    subprocess.run(cmd_split, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    split_files = sorted(glob.glob(f"{base_name}_part*{ext}"))
+    
+    # Remove original large file to save disk space
+    if len(split_files) > 0 and os.path.exists(filepath):
+        os.remove(filepath)
+        
+    return split_files
