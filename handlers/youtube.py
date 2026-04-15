@@ -79,8 +79,10 @@ async def ytdl_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if row:
             keyboard.append(row)
             
-        keyboard.append([InlineKeyboardButton("🌟 بهترین کیفیت (Best)", callback_data=f"ytdl:{video_id}:best")])
-
+        keyboard.append([
+            InlineKeyboardButton("🌟 بهترین کیفیت", callback_data=f"ytdl:{video_id}:best"),
+            InlineKeyboardButton("🎵 فقط صدا", callback_data=f"ytdl:{video_id}:audio")
+        ])
         reply_markup = InlineKeyboardMarkup(keyboard)
         await status_msg.edit_text(
             text=f"🎥 ویدیو پیدا شد!\nلطفاً کیفیت مورد نظر خود را انتخاب کنید:\n`https://www.youtube.com/watch?v={video_id}`",
@@ -155,8 +157,12 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
     video_url = f"https://www.youtube.com/watch?v={video_id}"
 
     # تبدیل کیفیت انتخابی به فرمت استاندارد yt-dlp
+    # تبدیل کیفیت انتخابی به فرمت استاندارد yt-dlp
     if quality == 'best':
         format_str = 'b'
+    elif quality == 'audio':
+        # اولویت با فرمت m4a است که در تلگرام بهترین پشتیبانی را برای پخش مستقیم دارد
+        format_str = 'bestaudio[ext=m4a]/bestaudio/best'
     else:
         # فرمول: بهترین ویدیوی کوچکتر یا مساوی این رزولوشن + بهترین صدا / یا بهترین کیفیت تکی این رزولوشن
         format_str = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
@@ -166,11 +172,14 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
     chat_id = update.effective_chat.id
     message_id = query.message.message_id
     
+    quality_text = "صدا 🎵" if quality == 'audio' else f"ویدیو {quality}p" if quality != 'best' else "بهترین کیفیت"
+    
     await context.bot.edit_message_text(
         chat_id=chat_id, message_id=message_id,
-        text=f"⏳ در حال دانلود از یوتیوب (کیفیت {quality}p)...\n`{video_url}`", 
+        text=f"⏳ در حال دانلود از یوتیوب ({quality_text})...\n`{video_url}`", 
         parse_mode="Markdown"
     )
+
 
     async def update_progress(downloaded, total):
         try:
