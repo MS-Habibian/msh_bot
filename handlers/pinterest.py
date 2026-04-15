@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from telegram.ext import ContextTypes
 # from utils.pinterest_helper import search_pinterest_async
-from utils.pinterest_helper import search_pinterest_async, search_pinterest_google
+from utils.pinterest_helper import search_pinterest_async, search_pinterest_google, search_pinterest_rss
 
 
 async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -18,6 +18,9 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # اگر نتیجه‌ای نیامد، روش دوم را امتحان کن
     if not results:
         results = await search_pinterest_google(query, limit=10)
+
+    if not results:
+      results = await search_pinterest_rss(query, limit=10)
 
     if not results:
         await processing_msg.edit_text("❌ نتیجه‌ای یافت نشد. لطفاً دوباره تلاش کنید.")
