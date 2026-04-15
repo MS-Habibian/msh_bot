@@ -1,6 +1,6 @@
 import asyncio
 # در نسخه جدید ممکن است نام ایمپورت همچنان duckduckgo_search باشد اما پکیج ddgs نصب شده است
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 async def search_pinterest_async(query: str, limit: int = 10) -> list:
     """جستجوی تصاویر در پینترست با استفاده از داک‌داک‌گو"""
