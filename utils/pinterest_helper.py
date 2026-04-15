@@ -1,23 +1,30 @@
 import aiohttp
 import random
+import json
 
-# لیستی از سرورهای عمومی SearXNG که جستجوی عکس و خروجی JSON را پشتیبانی می‌کنند
+# لیست گسترده‌تری از سرورهای SearXNG
 SEARX_INSTANCES = [
     "https://searx.be",
     "https://searx.tiekoetter.com",
     "https://search.rowie.at",
-    "https://searx.work"
+    "https://searx.work",
+    "https://paulgo.io",
+    "https://searx.roastgopher.com",
+    "https://searx.ox2.fr"
 ]
 
 async def search_pinterest_async(query: str, limit: int = 10) -> list:
-    """جستجوی تصاویر با استفاده از موتورهای عمومی SearXNG برای دور زدن محدودیت IP"""
     clean_query = query.replace('/pin', '').strip()
     search_query = f"{clean_query} site:pinterest.com"
     
-    # سرورها را به صورت تصادفی مرتب می‌کنیم تا فشار روی یک سرور نیفتد
     instances = random.sample(SEARX_INSTANCES, len(SEARX_INSTANCES))
     
-    async with aiohttp.ClientSession() as session:
+    # اضافه کردن هدرهای شبیه‌ساز مرورگر
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    async with aiohttp.ClientSession(headers=headers) as session:
         for instance in instances:
             try:
                 url = f"{instance}/search"
@@ -30,15 +37,19 @@ async def search_pinterest_async(query: str, limit: int = 10) -> list:
                 
                 async with session.get(url, params=params, timeout=10) as resp:
                     if resp.status == 200:
-                        data = await resp.json()
+                        # غیرفعال کردن چک کردن نوع محتوا برای جلوگیری از خطای mimetype
+                        try:
+                            data = await resp.json(content_type=None)
+                        except json.JSONDecodeError:
+                            # اگر سرور به جای JSON فایل HTML فرستاد (بسته بودن API)، این سرور را رد کن
+                            continue
+                            
                         results = data.get('results', [])
-                        
                         if not results:
-                            continue # اگر نتیجه نداشت، سرور بعدی را امتحان کن
+                            continue
                             
                         parsed_results = []
                         for i, item in enumerate(results[:limit], start=1):
-                            # استخراج لینک عکس و پیش‌نمایش
                             original_url = item.get('img_src')
                             thumbnail_url = item.get('thumbnail_src') or original_url
                             
@@ -52,7 +63,8 @@ async def search_pinterest_async(query: str, limit: int = 10) -> list:
                         return parsed_results
                         
             except Exception as e:
-                print(f"SearXNG Error on {instance}: {e}")
-                continue # در صورت بروز خطا، به سراغ سرور بعدی در لیست می‌رود
+                # نادیده گرفتن خطا و رفتن به سرور بعدی
+                # print(f"Skipping {instance} due to error: {e}")
+                continue
                 
     return []
