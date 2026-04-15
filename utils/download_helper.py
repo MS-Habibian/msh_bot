@@ -77,7 +77,7 @@ def split_file(filepath, chunk_size=20 * 1024 * 1024):  # 20 MB chunks
 
 
 def split_media_playable(filepath, max_size_mb=19):
-    """Splits audio/video into playable segments using FFmpeg and returns paths."""
+    """Splits audio/video into playable segments using FFmpeg explicitly and returns paths."""
     max_size_bytes = max_size_mb * 1024 * 1024
     file_size = os.path.getsize(filepath)
     
@@ -95,26 +95,35 @@ def split_media_playable(filepath, max_size_mb=19):
         total_duration = float(duration_str)
     except Exception as e:
         print(f"Error getting duration: {e}")
-        total_duration = 3600  
+        # اگر زمان تشخیص داده نشد، برمی‌گردیم به حالت باینری ساده تا ربات از کار نیفتد
+        return split_file(filepath, chunk_size=max_size_bytes)
 
+    # محاسبه دقیق زمان هر بخش
     segment_time = math.ceil(total_duration / parts_count)
-    
     base_name, ext = os.path.splitext(filepath)
-    output_pattern = f"{base_name}_part%03d{ext}"
+    split_files = []
     
-    cmd_split = [
-        'ffmpeg', '-i', filepath,
-        '-f', 'segment',
-        '-segment_time', str(segment_time),
-        '-c', 'copy',
-        output_pattern
-    ]
-    
-    subprocess.run(cmd_split, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    split_files = sorted(glob.glob(f"{base_name}_part*{ext}"))
-    
-    # Remove original large file to save disk space
+    for i in range(parts_count):
+        start_time = i * segment_time
+        if start_time >= total_duration:
+            break
+            
+        output_file = f"{base_name}_part{i+1:03d}{ext}"
+        
+        cmd_split = [
+            'ffmpeg', '-y', '-i', filepath,
+            '-ss', str(start_time),  # نقطه شروع
+            '-t', str(segment_time), # مدت زمان این بخش
+            '-c', 'copy',            # کپی بدون افت کیفیت
+            output_file
+        ]
+        
+        subprocess.run(cmd_split, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+            split_files.append(output_file)
+
+    # حذف فایل اصلی پس از اتمام برش
     if len(split_files) > 0 and os.path.exists(filepath):
         os.remove(filepath)
         
