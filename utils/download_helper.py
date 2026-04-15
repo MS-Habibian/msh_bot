@@ -1,4 +1,3 @@
-# utils/download_helper.py
 import os
 import re
 import time
@@ -13,37 +12,28 @@ def format_size(bytes_size: int) -> str:
     return f"{bytes_size / (1024 * 1024):.2f} MB"
 
 async def download_file_async(url, dest_folder, progress_callback=None):
-    # Modified to save inside a specific dest_folder
     os.makedirs(dest_folder, exist_ok=True)
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             response.raise_for_status()
 
-            # Extract filename (simplified for this example)
             parsed_url = urllib.parse.urlparse(url)
-            filename = os.path.basename(urllib.parse.unquote(parsed_url.path))
-            if not filename:
-                filename = "downloaded_file.dat"
-
+            filename = os.path.basename(urllib.parse.unquote(parsed_url.path)) or "downloaded_file.dat"
             filepath = os.path.join(dest_folder, filename)
+            
             total_size = int(response.headers.get("Content-Length", 0))
-            print("file size:", total_size)
-            # Telegram bot limit is 5GB (52,428,800 bytes)
             if total_size > 5242880000:
-                raise ValueError(
-                    f"File is too large ({format_size(total_size)}). Telegram limit is 5 GB."
-                )
+                raise ValueError(f"File is too large ({format_size(total_size)}). Telegram limit is 5 GB.")
 
             downloaded_size = 0
             last_update_time = time.time()
 
-            # 2. Download the file in chunks
             with open(filepath, "wb") as f:
                 async for chunk in response.content.iter_chunked(8192):
                     f.write(chunk)
                     downloaded_size += len(chunk)
-                    # 3. Report progress every 2 seconds (to avoid Telegram rate limits)
+                    
                     now = time.time()
                     if now - last_update_time > 4:
                         if progress_callback:
@@ -52,33 +42,28 @@ async def download_file_async(url, dest_folder, progress_callback=None):
             return filepath
 
 
-def split_file(filepath, chunk_size=20 * 1024 * 1024):  # 20 MB chunks
-    """Splits a file into binary chunks and returns a list of part paths."""
+def split_file(filepath, chunk_size=19 * 1024 * 1024):  # Default 19 MB chunks
+    """Splits a file into binary chunks."""
     file_size = os.path.getsize(filepath)
     if file_size <= chunk_size:
         return [filepath]
 
     part_files = []
-    part_num = 1
     with open(filepath, "rb") as f:
-        while True:
-            chunk = f.read(chunk_size)
-            if not chunk:
-                break
-            # Create extensions like .part001, .part002
+        part_num = 1
+        while chunk := f.read(chunk_size):
             part_name = f"{filepath}.part{part_num:03d}"
             with open(part_name, "wb") as p:
                 p.write(chunk)
             part_files.append(part_name)
             part_num += 1
 
-    # Remove the original large file to save disk space
     os.remove(filepath)
     return part_files
 
 
 def split_media_playable(filepath, max_size_mb=19):
-    """Splits audio/video into playable segments using FFmpeg explicitly and returns paths."""
+    """Splits audio/video into playable segments using FFmpeg explicitly."""
     max_size_bytes = max_size_mb * 1024 * 1024
     file_size = os.path.getsize(filepath)
     
@@ -88,18 +73,12 @@ def split_media_playable(filepath, max_size_mb=19):
     parts_count = math.ceil(file_size / max_size_bytes)
     
     try:
-        cmd_duration = [
-            'ffprobe', '-v', 'error', '-show_entries', 
-            'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath
-        ]
-        duration_str = subprocess.check_output(cmd_duration).decode('utf-8').strip()
-        total_duration = float(duration_str)
+        cmd_duration = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]
+        total_duration = float(subprocess.check_output(cmd_duration).decode('utf-8').strip())
     except Exception as e:
         print(f"Error getting duration: {e}")
-        # اگر زمان تشخیص داده نشد، برمی‌گردیم به حالت باینری ساده تا ربات از کار نیفتد
         return split_file(filepath, chunk_size=max_size_bytes)
 
-    # محاسبه دقیق زمان هر بخش
     segment_time = math.ceil(total_duration / parts_count)
     base_name, ext = os.path.splitext(filepath)
     split_files = []
@@ -110,70 +89,39 @@ def split_media_playable(filepath, max_size_mb=19):
             break
             
         output_file = f"{base_name}_part{i+1:03d}{ext}"
-        
-        cmd_split = [
-            'ffmpeg', '-y', '-i', filepath,
-            '-ss', str(start_time),  # نقطه شروع
-            '-t', str(segment_time), # مدت زمان این بخش
-            '-c', 'copy',            # کپی بدون افت کیفیت
-            output_file
-        ]
-        
+        cmd_split = ['ffmpeg', '-y', '-i', filepath, '-ss', str(start_time), '-t', str(segment_time), '-c', 'copy', output_file]
         subprocess.run(cmd_split, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
             split_files.append(output_file)
 
-    # حذف فایل اصلی پس از اتمام برش
-    if len(split_files) > 0 and os.path.exists(filepath):
+    if split_files and os.path.exists(filepath):
         os.remove(filepath)
         
     return split_files
 
-def split_file_rar(filepath, max_size_mb=19):
-    """Splits a file into multi-part RAR archives for easy extraction."""
-    file_size = os.path.getsize(filepath)
-    max_size_bytes = max_size_mb * 1024 * 1024
 
-    if file_size <= max_size_bytes:
+def split_file_rar(filepath, max_size_mb=19.5):
+    """Splits a file into multi-part RAR archives."""
+    max_size_bytes = int(max_size_mb * 1024 * 1024)
+    if os.path.getsize(filepath) <= max_size_bytes:
         return [filepath]
 
     base_name, _ = os.path.splitext(filepath)
     rar_base_name = f"{base_name}.rar"
 
-    # دستور ساخت رار چند بخشی: 
-    # a: اضافه کردن به آرشیو
-    # -v19M: حجم هر پارت 19 مگابایت
-    # -m0: بدون فشرده سازی (سرعت بسیار بالا)
-    # -ep: حذف مسیر پوشه ها در فایل رار
-    cmd = [
-        'rar', 'a',
-        f'-v{max_size_mb}M',
-        '-m0',
-        '-ep',
-        rar_base_name,
-        filepath
-    ]
+    cmd = ['rar', 'a', f'-v{max_size_mb}M', '-m0', '-ep', rar_base_name, filepath]
 
     try:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     except Exception as e:
         print(f"Error creating RAR: {e}")
-        # اگر rar نصب نبود یا خطایی داد، به روش باینری قبلی برمی‌گردیم تا ربات از کار نیفتد
         return split_file(filepath, chunk_size=max_size_bytes)
 
-    # پیدا کردن تمام پارت‌های ساخته شده (part1.rar, part2.rar, ...)
     split_files = glob.glob(f"{base_name}.part*.rar")
-    
-    # مرتب‌سازی دقیق پارت‌ها بر اساس شماره
-    def get_part_number(f):
-        match = re.search(r'part(\d+)\.rar$', f)
-        return int(match.group(1)) if match else 0
-        
-    split_files.sort(key=get_part_number)
+    split_files.sort(key=lambda f: int(re.search(r'part(\d+)\.rar$', f).group(1)) if re.search(r'part(\d+)\.rar$', f) else 0)
 
-    # حذف فایل اصلی
-    if len(split_files) > 0 and os.path.exists(filepath):
+    if split_files and os.path.exists(filepath):
         os.remove(filepath)
 
     return split_files

@@ -5,18 +5,33 @@ import re
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
-# توابع ایمپورت شده بر اساس ساختار شما
 from utils.youtube_helper import search_youtube_async, get_youtube_qualities_async, download_youtube_video_async
-from utils.download_helper import format_size, split_file, split_file_rar, split_media_playable
+from utils.download_helper import format_size, split_media_playable, split_file_rar
 from handlers.downloader import cleanup_folder_job
 
-
-def extract_yt_video_id(url: str):
+def extract_yt_video_id(url: str) -> str | None:
     pattern = r'(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
-# --- 1. دستور جستجوی یوتیوب ---
+def _build_quality_keyboard(video_id: str, resolutions: list) -> InlineKeyboardMarkup:
+    """Helper function to build the resolution keyboard."""
+    keyboard = []
+    row = []
+    for res in resolutions:
+        row.append(InlineKeyboardButton(f"🎬 {res}p", callback_data=f"ytdl:{video_id}:{res}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+        
+    keyboard.append([
+        InlineKeyboardButton("🌟 بهترین کیفیت", callback_data=f"ytdl:{video_id}:best"),
+        InlineKeyboardButton("🎵 فقط صدا", callback_data=f"ytdl:{video_id}:audio")
+    ])
+    return InlineKeyboardMarkup(keyboard)
+
 async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text("⚠️ لطفاً نام ویدیو را وارد کنید!\n*نحوه استفاده:* `/yt <نام ویدیو>`", parse_mode="Markdown")
@@ -31,17 +46,12 @@ async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await status_msg.edit_text("❌ نتیجه‌ای یافت نشد.")
             return
 
-        keyboard = []
-        text = "🎥 *نتایج جستجوی یوتیوب:*\n\n"
-        for index, video in enumerate(results, start=1):
-            text += f"{index}. {video['title']}\n"
-            # انتقال به مرحله انتخاب کیفیت با ytfmt
-            btn = InlineKeyboardButton(f"انتخاب کیفیت #{index}", callback_data=f"ytfmt:{video['id']}")
-            keyboard.append([btn])
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await status_msg.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
-
+        keyboard = [[InlineKeyboardButton(f"انتخاب ویدیوی #{i}", callback_data=f"ytfmt:{vid['id']}")] 
+                    for i, vid in enumerate(results, start=1)]
+        
+        text = "🎥 *نتایج جستجوی یوتیوب:*\n\n" + "\n".join([f"{i}. {vid['title']}" for i, vid in enumerate(results, start=1)])
+        
+        await status_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
         await status_msg.edit_text(f"❌ خطا در جستجو: `{str(e)}`", parse_mode="Markdown")
 
@@ -61,40 +71,21 @@ async def ytdl_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     status_msg = await update.message.reply_text("⏳ در حال استخراج کیفیت‌های موجود...\nاین عملیات ممکن است کمی طول بکشد.")
 
     try:
-        # دریافت کیفیت‌ها همانند سرچ
         resolutions = await get_youtube_qualities_async(video_url)
-        
         if not resolutions:
             await status_msg.edit_text("❌ کیفیت قابل دانلودی یافت نشد یا ویدیو در دسترس نیست.")
             return
 
-        keyboard = []
-        row = []
-        for res in resolutions:
-            btn = InlineKeyboardButton(f"🎬 {res}p", callback_data=f"ytdl:{video_id}:{res}")
-            row.append(btn)
-            if len(row) == 2:
-                keyboard.append(row)
-                row = []
-        if row:
-            keyboard.append(row)
-            
-        keyboard.append([
-            InlineKeyboardButton("🌟 بهترین کیفیت", callback_data=f"ytdl:{video_id}:best"),
-            InlineKeyboardButton("🎵 فقط صدا", callback_data=f"ytdl:{video_id}:audio")
-        ])
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        reply_markup = _build_quality_keyboard(video_id, resolutions)
         await status_msg.edit_text(
             text=f"🎥 ویدیو پیدا شد!\nلطفاً کیفیت مورد نظر خود را انتخاب کنید:\n`https://www.youtube.com/watch?v={video_id}`",
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
-
     except Exception as e:
         await status_msg.edit_text(text=f"❌ خطا در دریافت کیفیت‌ها:\n`{str(e)}`")
 
 
-# --- 2. هندلر نمایش کیفیت‌ها ---
 async def handle_yt_format_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
@@ -102,82 +93,43 @@ async def handle_yt_format_callback(update: Update, context: ContextTypes.DEFAUL
     _, video_id = query.data.split(":")
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
-    chat_id = update.effective_chat.id
-    message_id = query.message.message_id
-
-    await context.bot.edit_message_text(
-        chat_id=chat_id, message_id=message_id,
-        text="⏳ در حال استخراج کیفیت‌های موجود...\nاین عملیات ممکن است کمی طول بکشد.",
-    )
+    await query.edit_message_text("⏳ در حال استخراج کیفیت‌های موجود...\nاین عملیات ممکن است کمی طول بکشد.")
 
     try:
         resolutions = await get_youtube_qualities_async(video_url)
-        
         if not resolutions:
-            await context.bot.edit_message_text(
-                chat_id=chat_id, message_id=message_id,
-                text="❌ کیفیت قابل دانلودی یافت نشد یا ویدیو در دسترس نیست."
-            )
+            await query.edit_message_text("❌ کیفیت قابل دانلودی یافت نشد یا ویدیو در دسترس نیست.")
             return
 
-        keyboard = []
-        row = []
-        # ساخت دکمه برای هر رزولوشن (مثلا 360, 720, 1080)
-        for res in resolutions:
-            btn = InlineKeyboardButton(f"🎬 {res}p", callback_data=f"ytdl:{video_id}:{res}")
-            row.append(btn)
-            if len(row) == 2:
-                keyboard.append(row)
-                row = []
-        if row:
-            keyboard.append(row)
-            
-        # دکمه دانلود بهترین کیفیت (ادغام شده پیش‌فرض)
-        keyboard.append([InlineKeyboardButton("🌟 بهترین کیفیت (Best)", callback_data=f"ytdl:{video_id}:best")])
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await context.bot.edit_message_text(
-            chat_id=chat_id, message_id=message_id,
+        reply_markup = _build_quality_keyboard(video_id, resolutions)
+        await query.edit_message_text(
             text=f"🎥 ویدیو پیدا شد!\nلطفاً کیفیت مورد نظر خود را انتخاب کنید:\n`{video_url}`",
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
-
     except Exception as e:
-        await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"❌ خطا در دریافت کیفیت‌ها:\n`{str(e)}`")
+        await query.edit_message_text(text=f"❌ خطا در دریافت کیفیت‌ها:\n`{str(e)}`")
 
 
-# --- 3. هندلر دانلود و اسپلیت (تکه کردن) ---
 async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
 
-    # استخراج آیدی و کیفیت
     _, video_id, quality = query.data.split(":")
     video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    # تبدیل کیفیت انتخابی به فرمت استاندارد yt-dlp
     if quality == 'best':
         format_str = 'b'
     elif quality == 'audio':
-        # اولویت با فرمت m4a است که در تلگرام بهترین پشتیبانی را برای پخش مستقیم دارد
         format_str = 'bestaudio[ext=m4a]/bestaudio/best'
     else:
-        # فرمول: بهترین ویدیوی کوچکتر یا مساوی این رزولوشن + بهترین صدا / یا بهترین کیفیت تکی این رزولوشن
         format_str = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
 
     file_id = str(uuid.uuid4())
     download_folder = os.path.join("downloads", file_id)
-    chat_id = update.effective_chat.id
-    message_id = query.message.message_id
-    
     quality_text = "صدا 🎵" if quality == 'audio' else f"ویدیو {quality}p" if quality != 'best' else "بهترین کیفیت"
     
-    await context.bot.edit_message_text(
-        chat_id=chat_id, message_id=message_id,
-        text=f"⏳ در حال دانلود از یوتیوب ({quality_text})...\n`{video_url}`", 
-        parse_mode="Markdown"
-    )
+    await query.edit_message_text(text=f"⏳ در حال دانلود از یوتیوب ({quality_text})...\n`{video_url}`", parse_mode="Markdown")
 
     async def update_progress(downloaded, total):
         try:
@@ -186,77 +138,49 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
                 text = f"⬇️ *در حال دانلود از یوتیوب...*\nپیشرفت: `{percent:.1f}%`\nحجم: `{format_size(downloaded)} / {format_size(total)}`"
             else:
                 text = f"⬇️ *در حال دانلود از یوتیوب...*\nدانلود شده: `{format_size(downloaded)}`"
-            await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, parse_mode="Markdown")
+            await query.edit_message_text(text=text, parse_mode="Markdown")
         except Exception:
-            pass # نادیده گرفتن خطای بله
+            pass 
 
     try:
-        # دانلود با کیفیت مشخص شده
         filepath = await download_youtube_video_async(video_url, download_folder, format_str, progress_callback=update_progress)
-
-        await context.bot.edit_message_text(
-            chat_id=chat_id, message_id=message_id,
-            text="✂️ در حال پردازش و تقسیم فایل به تکه‌های زیر ۲۰ مگابایت..."
-        )
+        await query.edit_message_text("✂️ در حال پردازش و تقسیم فایل به تکه‌های زیر ۲۰ مگابایت...")
         
-        # ------------------ تغییر اصلی در این قسمت است ------------------
-        if quality == 'audio':
-            part_files = split_media_playable(filepath)
-        else:
-            part_files = split_file_rar(filepath)
-
-        # ----------------------------------------------------------------
+        part_files = split_media_playable(filepath) if quality == 'audio' else split_file_rar(filepath)
 
         context.job_queue.run_once(cleanup_folder_job, 5 * 3600, data=download_folder, name=f"cleanup_{file_id}")
 
-        keyboard = []
-        row = []
-        for i, part in enumerate(part_files):
-            btn = InlineKeyboardButton(f"Part {i+1}", callback_data=f"reup:{file_id}:{i}")
-            row.append(btn)
-            if len(row) == 3:
-                keyboard.append(row)
-                row = []
-        if row:
-            keyboard.append(row)
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await context.bot.edit_message_text(
-            chat_id=chat_id, message_id=message_id,
+        keyboard = [[InlineKeyboardButton(f"Part {i+1}", callback_data=f"reup:{file_id}:{i}")] for i in range(len(part_files))]
+        # Group buttons by 3
+        keyboard = [keyboard[i:i+3] for i in range(0, len(keyboard), 3)]
+        
+        await query.edit_message_text(
             text=f"✅ *پردازش کامل شد!*\n\n📂 تعداد بخش‌ها: `{len(part_files)}`\n☁️ *در حال آپلود بخش‌ها...*",
-            reply_markup=reply_markup, parse_mode="Markdown"
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
         )
 
         for i, part_path in enumerate(part_files):
             try:
                 with open(part_path, "rb") as f:
-                    # ------------------ تغییر برای ارسال فایل صوتی ------------------
+                    send_kwargs = {
+                        "chat_id": update.effective_chat.id,
+                        "caption": f"{'🎵' if quality == 'audio' else '🎥'} بخش {i+1} از {len(part_files)}",
+                        "read_timeout": 120, "write_timeout": 300, "connect_timeout": 120,
+                        "reply_to_message_id": query.message.message_id
+                    }
                     if quality == 'audio':
-                        await context.bot.send_audio(
-                            chat_id=chat_id,
-                            audio=f,
-                            caption=f"🎵 بخش {i+1} از {len(part_files)}",
-                            read_timeout=120, write_timeout=300, connect_timeout=120,
-                            reply_to_message_id=message_id 
-                        )
+                        await context.bot.send_audio(audio=f, **send_kwargs)
                     else:
-                        await context.bot.send_document(
-                            chat_id=chat_id,
-                            document=f,
-                            caption=f"🎥 بخش {i+1} از {len(part_files)}",
-                            read_timeout=120, write_timeout=300, connect_timeout=120,
-                            reply_to_message_id=message_id 
-                        )
-                    # ----------------------------------------------------------------
+                        await context.bot.send_document(document=f, **send_kwargs)
             except Exception:
-                await context.bot.send_message(chat_id=chat_id, text=f"❌ آپلود بخش {i+1} ناموفق بود.")
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=f"❌ آپلود بخش {i+1} ناموفق بود.")
 
     except Exception as e:
         error_text = f"❌ *خطا در دانلود ویدیو:*\n`{str(e)}`"
         try:
-            await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=error_text, parse_mode="Markdown")
+            await query.edit_message_text(text=error_text, parse_mode="Markdown")
         except:
-            await context.bot.send_message(chat_id=chat_id, text=error_text, parse_mode="Markdown")
-        if os.path.exists(download_folder):
-            shutil.rmtree(download_folder)
-
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=error_text, parse_mode="Markdown")
+    finally:
+        # Avoid removing directory if files are still queued for uploads/reups
+        pass
