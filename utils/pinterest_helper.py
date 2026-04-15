@@ -1,70 +1,107 @@
 import aiohttp
-import random
-import json
+import urllib.parse
+from typing import List, Dict
 
-# لیست گسترده‌تری از سرورهای SearXNG
-SEARX_INSTANCES = [
-    "https://searx.be",
-    "https://searx.tiekoetter.com",
-    "https://search.rowie.at",
-    "https://searx.work",
-    "https://paulgo.io",
-    "https://searx.roastgopher.com",
-    "https://searx.ox2.fr"
-]
-
-async def search_pinterest_async(query: str, limit: int = 10) -> list:
+async def search_pinterest_async(query: str, limit: int = 10) -> List[Dict]:
+    """
+    جستجوی تصاویر Pinterest با استفاده از API عمومی
+    """
     clean_query = query.replace('/pin', '').strip()
-    search_query = f"{clean_query} site:pinterest.com"
+    encoded_query = urllib.parse.quote(clean_query)
     
-    instances = random.sample(SEARX_INSTANCES, len(SEARX_INSTANCES))
+    # استفاده از endpoint عمومی Pinterest
+    url = f"https://www.pinterest.com/resource/BaseSearchResource/get/"
     
-    # اضافه کردن هدرهای شبیه‌ساز مرورگر
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    params = {
+        'source_url': f'/search/pins/?q={encoded_query}',
+        'data': '{"options":{"query":"' + clean_query + '","scope":"pins"},"context":{}}'
     }
     
-    async with aiohttp.ClientSession(headers=headers) as session:
-        for instance in instances:
-            try:
-                url = f"{instance}/search"
-                params = {
-                    "q": search_query,
-                    "categories": "images",
-                    "format": "json",
-                    "safesearch": "0"
-                }
-                
-                async with session.get(url, params=params, timeout=10) as resp:
-                    if resp.status == 200:
-                        # غیرفعال کردن چک کردن نوع محتوا برای جلوگیری از خطای mimetype
-                        try:
-                            data = await resp.json(content_type=None)
-                        except json.JSONDecodeError:
-                            # اگر سرور به جای JSON فایل HTML فرستاد (بسته بودن API)، این سرور را رد کن
-                            continue
-                            
-                        results = data.get('results', [])
-                        if not results:
-                            continue
-                            
-                        parsed_results = []
-                        for i, item in enumerate(results[:limit], start=1):
-                            original_url = item.get('img_src')
-                            thumbnail_url = item.get('thumbnail_src') or original_url
-                            
-                            parsed_results.append({
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+    }
+    
+    results = []
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, headers=headers, timeout=15) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    # استخراج پین‌ها از پاسخ
+                    pins = data.get('resource_response', {}).get('data', {}).get('results', [])
+                    
+                    for i, pin in enumerate(pins[:limit], start=1):
+                        images = pin.get('images', {})
+                        
+                        # انتخاب بهترین کیفیت موجود
+                        original = images.get('orig', {}).get('url')
+                        if not original:
+                            original = images.get('736x', {}).get('url')
+                        if not original:
+                            original = images.get('564x', {}).get('url')
+                        
+                        thumbnail = images.get('236x', {}).get('url', original)
+                        
+                        if original:
+                            results.append({
                                 'id': str(i),
-                                'title': item.get('title', 'Pinterest Image'),
-                                'thumbnail': thumbnail_url,
-                                'original': original_url
+                                'title': pin.get('grid_title', f'Pinterest Image {i}')[:100],
+                                'thumbnail': thumbnail,
+                                'original': original,
+                                'pin_url': f"https://pinterest.com/pin/{pin.get('id', '')}"
                             })
                             
-                        return parsed_results
+    except Exception as e:
+        print(f"Pinterest Search Error: {e}")
+    
+    return results
+
+
+async def search_pinterest_google(query: str, limit: int = 10) -> List[Dict]:
+    """
+    جستجوی تصاویر Pinterest از طریق Google Images
+    """
+    clean_query = query.replace('/pin', '').strip()
+    search_query = f"{clean_query} site:pinterest.com"
+    encoded_query = urllib.parse.quote(search_query)
+    
+    url = f"https://www.google.com/search?q={encoded_query}&tbm=isch"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+    
+    results = []
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=15) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    
+                    # استخراج URL های تصاویر از HTML
+                    import re
+                    pattern = r'"(https://i\.pinimg\.com/[^"]+)"'
+                    matches = re.findall(pattern, html)
+                    
+                    unique_urls = list(dict.fromkeys(matches))
+                    
+                    for i, img_url in enumerate(unique_urls[:limit], start=1):
+                        # تبدیل به کیفیت بالاتر
+                        original = img_url.replace('/236x/', '/originals/')
                         
-            except Exception as e:
-                # نادیده گرفتن خطا و رفتن به سرور بعدی
-                # print(f"Skipping {instance} due to error: {e}")
-                continue
-                
-    return []
+                        results.append({
+                            'id': str(i),
+                            'title': f'Pinterest Image {i}',
+                            'thumbnail': img_url,
+                            'original': original
+                        })
+                        
+    except Exception as e:
+        print(f"Google Pinterest Search Error: {e}")
+    
+    return results
