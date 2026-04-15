@@ -54,8 +54,10 @@ def main() -> None:
 
     # هندلر جستجوی یوتیوب
     application.add_handler(CommandHandler("yt", yt_command))
+    # هندلر جدید برای دانلود مستقیم با لینک
+    application.add_handler(CommandHandler("ytdl", ytdl_command))
 
-    # هندلر کلیک روی نتایج جستجوی یوتیوب (شناسایی با پترن ytdl:)
+    # هندلر کلیک روی نتایج
     application.add_handler(CallbackQueryHandler(handle_yt_download_callback, pattern="^ytdl:"))
     application.add_handler(CallbackQueryHandler(handle_yt_format_callback, pattern=r"^ytfmt:"))
 

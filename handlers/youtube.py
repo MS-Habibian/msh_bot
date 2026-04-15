@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import re
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
@@ -8,6 +9,12 @@ from telegram.ext import ContextTypes
 from utils.youtube_helper import search_youtube_async, get_youtube_qualities_async, download_youtube_video_async
 from utils.download_helper import format_size, split_file
 from handlers.downloader import cleanup_folder_job
+
+
+def extract_yt_video_id(url: str):
+    pattern = r'(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
+    match = re.search(pattern, url)
+    return match.group(1) if match else None
 
 # --- 1. دستور جستجوی یوتیوب ---
 async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -37,6 +44,52 @@ async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     except Exception as e:
         await status_msg.edit_text(f"❌ خطا در جستجو: `{str(e)}`", parse_mode="Markdown")
+
+
+async def ytdl_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text("⚠️ لطفاً لینک یوتیوب را وارد کنید!\n*نحوه استفاده:* `/ytdl <لینک یوتیوب>`", parse_mode="Markdown")
+        return
+
+    video_url = context.args[0]
+    video_id = extract_yt_video_id(video_url)
+    
+    if not video_id:
+        await update.message.reply_text("❌ لینک وارد شده نامعتبر است یا آیدی ویدیو یافت نشد.")
+        return
+
+    status_msg = await update.message.reply_text("⏳ در حال استخراج کیفیت‌های موجود...\nاین عملیات ممکن است کمی طول بکشد.")
+
+    try:
+        # دریافت کیفیت‌ها همانند سرچ
+        resolutions = await get_youtube_qualities_async(video_url)
+        
+        if not resolutions:
+            await status_msg.edit_text("❌ کیفیت قابل دانلودی یافت نشد یا ویدیو در دسترس نیست.")
+            return
+
+        keyboard = []
+        row = []
+        for res in resolutions:
+            btn = InlineKeyboardButton(f"🎬 {res}p", callback_data=f"ytdl:{video_id}:{res}")
+            row.append(btn)
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+            
+        keyboard.append([InlineKeyboardButton("🌟 بهترین کیفیت (Best)", callback_data=f"ytdl:{video_id}:best")])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await status_msg.edit_text(
+            text=f"🎥 ویدیو پیدا شد!\nلطفاً کیفیت مورد نظر خود را انتخاب کنید:\n`https://www.youtube.com/watch?v={video_id}`",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        await status_msg.edit_text(text=f"❌ خطا در دریافت کیفیت‌ها:\n`{str(e)}`")
 
 
 # --- 2. هندلر نمایش کیفیت‌ها ---
