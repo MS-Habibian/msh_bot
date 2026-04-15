@@ -12,6 +12,8 @@ from handlers.image import image_command
 # from handlers.instagram import instagram_command
 from telegram.ext import CommandHandler, CallbackQueryHandler
 from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command
+from handlers.pinterest import pin_command, handle_pin_download_callback
+from telegram.ext import CommandHandler, CallbackQueryHandler
 
 # Setup logging
 logging.basicConfig(
@@ -60,6 +62,10 @@ def main() -> None:
     # هندلر کلیک روی نتایج
     application.add_handler(CallbackQueryHandler(handle_yt_download_callback, pattern="^ytdl:"))
     application.add_handler(CallbackQueryHandler(handle_yt_format_callback, pattern=r"^ytfmt:"))
+
+    #پینترست
+    application.add_handler(CommandHandler("pin", pin_command))
+    application.add_handler(CallbackQueryHandler(handle_pin_download_callback, pattern=r"^pindl:"))
 
 
 
