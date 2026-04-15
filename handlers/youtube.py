@@ -150,9 +150,9 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
 
         context.job_queue.run_once(cleanup_folder_job, 5 * 3600, data=download_folder, name=f"cleanup_{file_id}")
 
-        keyboard = [[InlineKeyboardButton(f"Part {i+1}", callback_data=f"reup:{file_id}:{i}")] for i in range(len(part_files))]
-        # Group buttons by 3
-        keyboard = [keyboard[i:i+3] for i in range(0, len(keyboard), 3)]
+        # FIX: Generate a 1D list of buttons first, then chunk them into a 2D list (rows of 3)
+        buttons = [InlineKeyboardButton(f"Part {i+1}", callback_data=f"reup:{file_id}:{i}") for i in range(len(part_files))]
+        keyboard = [buttons[i:i+3] for i in range(0, len(buttons), 3)]
         
         await query.edit_message_text(
             text=f"✅ *پردازش کامل شد!*\n\n📂 تعداد بخش‌ها: `{len(part_files)}`\n☁️ *در حال آپلود بخش‌ها...*",
@@ -181,6 +181,3 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
             await query.edit_message_text(text=error_text, parse_mode="Markdown")
         except:
             await context.bot.send_message(chat_id=update.effective_chat.id, text=error_text, parse_mode="Markdown")
-    finally:
-        # Avoid removing directory if files are still queued for uploads/reups
-        pass
