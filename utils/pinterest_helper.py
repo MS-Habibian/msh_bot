@@ -86,30 +86,25 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
         'Accept-Language': 'en-US,en;q=0.9',
     }
     
-    results = []
-    
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers, timeout=20) as response:
-                print(f"[RSS] Status: {response.status}")
                 html = await response.text()
                 
-                import re
-                # Pinterest embeds image data in a JSON blob inside the HTML
-                pattern = r'"images":\{"orig":\{"url":"([^"]+)"[^}]*\}[^}]*"236x":\{"url":"([^"]+)"'
-                matches = re.findall(pattern, html)
-                print(f"[RSS] Found {len(matches)} images")
+                # ذخیره HTML برای بررسی
+                with open("pinterest_debug.html", "w", encoding="utf-8") as f:
+                    f.write(html)
+                print(f"[DEBUG] HTML saved, length: {len(html)}")
                 
-                for i, (orig_url, thumb_url) in enumerate(matches[:limit], start=1):
-                    results.append({
-                        'id': str(i),
-                        'title': f'Pinterest Image {i}',
-                        'thumbnail': thumb_url.replace('\\/', '/'),
-                        'original': orig_url.replace('\\/', '/')
-                    })
+                # بررسی اینکه آیا اصلاً عکسی هست
+                import re
+                pinimg_urls = re.findall(r'https://i\.pinimg\.com/[^\s"\\]+', html)
+                print(f"[DEBUG] pinimg URLs found: {len(pinimg_urls)}")
+                if pinimg_urls:
+                    print(f"[DEBUG] Sample URL: {pinimg_urls[0]}")
                     
     except Exception as e:
-        print(f"[RSS] Exception: {e}")
+        print(f"Exception: {e}")
     
-    return results
+    return []
 
