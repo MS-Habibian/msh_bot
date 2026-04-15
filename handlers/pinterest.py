@@ -12,15 +12,7 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     processing_msg = await update.message.reply_text(f"🔍 در حال جستجوی تصاویر برای '{query}'...")
 
-    # امتحان روش اول
-    results = await search_pinterest_async(query, limit=10)
-    
-    # اگر نتیجه‌ای نیامد، روش دوم را امتحان کن
-    if not results:
-        results = await search_pinterest_google(query, limit=10)
-
-    if not results:
-      results = await search_pinterest_rss(query, limit=10)
+    results = await search_pinterest_rss(query, limit=10)
 
     if not results:
         await processing_msg.edit_text("❌ نتیجه‌ای یافت نشد. لطفاً دوباره تلاش کنید.")
@@ -60,6 +52,7 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👇 برای دانلود عکس با کیفیت اصلی، شماره آن را انتخاب کنید:",
         reply_markup=reply_markup
     )
+
 
 async def handle_pin_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
