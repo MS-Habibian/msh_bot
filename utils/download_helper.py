@@ -1,5 +1,6 @@
 # utils/download_helper.py
 import os
+import re
 import time
 import aiohttp
 import urllib.parse
@@ -127,4 +128,52 @@ def split_media_playable(filepath, max_size_mb=19):
     if len(split_files) > 0 and os.path.exists(filepath):
         os.remove(filepath)
         
+    return split_files
+
+def split_file_rar(filepath, max_size_mb=19):
+    """Splits a file into multi-part RAR archives for easy extraction."""
+    file_size = os.path.getsize(filepath)
+    max_size_bytes = max_size_mb * 1024 * 1024
+
+    if file_size <= max_size_bytes:
+        return [filepath]
+
+    base_name, _ = os.path.splitext(filepath)
+    rar_base_name = f"{base_name}.rar"
+
+    # دستور ساخت رار چند بخشی: 
+    # a: اضافه کردن به آرشیو
+    # -v19M: حجم هر پارت 19 مگابایت
+    # -m0: بدون فشرده سازی (سرعت بسیار بالا)
+    # -ep: حذف مسیر پوشه ها در فایل رار
+    cmd = [
+        'rar', 'a',
+        f'-v{max_size_mb}M',
+        '-m0',
+        '-ep',
+        rar_base_name,
+        filepath
+    ]
+
+    try:
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    except Exception as e:
+        print(f"Error creating RAR: {e}")
+        # اگر rar نصب نبود یا خطایی داد، به روش باینری قبلی برمی‌گردیم تا ربات از کار نیفتد
+        return split_file(filepath, chunk_size=max_size_bytes)
+
+    # پیدا کردن تمام پارت‌های ساخته شده (part1.rar, part2.rar, ...)
+    split_files = glob.glob(f"{base_name}.part*.rar")
+    
+    # مرتب‌سازی دقیق پارت‌ها بر اساس شماره
+    def get_part_number(f):
+        match = re.search(r'part(\d+)\.rar$', f)
+        return int(match.group(1)) if match else 0
+        
+    split_files.sort(key=get_part_number)
+
+    # حذف فایل اصلی
+    if len(split_files) > 0 and os.path.exists(filepath):
+        os.remove(filepath)
+
     return split_files

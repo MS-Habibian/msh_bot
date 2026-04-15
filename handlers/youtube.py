@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes
 
 # توابع ایمپورت شده بر اساس ساختار شما
 from utils.youtube_helper import search_youtube_async, get_youtube_qualities_async, download_youtube_video_async
-from utils.download_helper import format_size, split_file, split_media_playable
+from utils.download_helper import format_size, split_file, split_file_rar, split_media_playable
 from handlers.downloader import cleanup_folder_job
 
 
@@ -203,7 +203,8 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
         if quality == 'audio':
             part_files = split_media_playable(filepath)
         else:
-            part_files = split_file(filepath)
+            part_files = split_file_rar(filepath)
+
         # ----------------------------------------------------------------
 
         context.job_queue.run_once(cleanup_folder_job, 5 * 3600, data=download_folder, name=f"cleanup_{file_id}")
