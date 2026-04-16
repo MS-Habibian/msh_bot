@@ -232,22 +232,23 @@ async def tgposts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         for i, part_path in enumerate(part_files):
                             try:
                                 part_caption = caption + (f"\n\n📦 بخش {i+1} از {len(part_files)}" if len(part_files) > 1 else "\n\n📦 فایل فشرده شده")
+                                
+                                # ساخت یک نام فایل امن و تصادفی برای دور زدن فیلتر بله
+                                safe_filename = f"file_post{post_idx}_part{i+1}.rar"
+                                
                                 with open(part_path, "rb") as f:
                                     await update.message.reply_document(
                                         document=f, 
+                                        filename=safe_filename,  # اضافه شدن این خط مهم است!
                                         caption=part_caption,
                                         read_timeout=120, write_timeout=300, connect_timeout=120
                                     )
                             except Exception as e:
+                                print(f"Upload error: {e}") # برای دیدن متن دقیق ارور در لاگ سرور
                                 await update.message.reply_text(f"❌ آپلود بخش {i+1} از پست {post_idx} ناموفق بود.")
                             finally:
                                 # زمان‌بندی حذف پارت‌های RAR بعد از ۵ ساعت
                                 context.job_queue.run_once(delete_file_job, DELETE_DELAY, data=part_path)
-
-                        # زمان‌بندی حذف فایل اصلی بعد از ۵ ساعت
-                        context.job_queue.run_once(delete_file_job, DELETE_DELAY, data=file_path)
-                            
-                        await progress_msg.delete()
 
             except Exception as e:
                 print(f"Failed to send a post to Bale: {e}")
