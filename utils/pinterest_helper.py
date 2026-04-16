@@ -4,6 +4,78 @@ import json
 from typing import List, Dict
 import urllib.parse
 
+
+from handlers.pinterest import load_cookies
+
+# async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
+#     clean_query = query.replace('/pin', '').strip()
+#     encoded_query = urllib.parse.quote(clean_query)
+    
+#     url = f"https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed"
+    
+#     headers = {
+#         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
+#         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+#         'Accept-Language': 'en-US,en;q=0.5',
+#         'Accept-Encoding': 'gzip, deflate, br',
+#         'DNT': '1',
+#         'Connection': 'keep-alive',
+#         'Upgrade-Insecure-Requests': '1',
+#         'Sec-Fetch-Dest': 'document',
+#         'Sec-Fetch-Mode': 'navigate',
+#         'Sec-Fetch-Site': 'none',
+#         'Cache-Control': 'max-age=0',
+#     }
+    
+#     results = []
+    
+#     try:
+#         connector = aiohttp.TCPConnector(ssl=False)
+#         async with aiohttp.ClientSession(connector=connector) as session:
+#             async with session.get(url, headers=headers, timeout=20) as response:
+#                 print(f"[Pinterest] Status: {response.status}")
+#                 html = await response.text()
+#                 print(f"[Pinterest] HTML size: {len(html)} bytes")
+                
+#                 # استخراج تمام URLهای تصویر pinimg
+#                 image_pattern = r'https://i\.pinimg\.com/(?:originals|736x|564x|474x)/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|gif)'
+#                 all_images = re.findall(image_pattern, html)
+                
+#                 # حذف تکراری‌ها و فیلتر کردن
+#                 unique_images = []
+#                 seen = set()
+                
+#                 for img_url in all_images:
+#                     # فقط تصاویر با کیفیت بالا
+#                     if '/originals/' in img_url or '/736x/' in img_url:
+#                         # استخراج ID یکتا از URL
+#                         img_id = img_url.split('/')[-1].split('.')[0]
+#                         if img_id not in seen:
+#                             seen.add(img_id)
+#                             unique_images.append(img_url)
+                
+#                 print(f"[Pinterest] Found {len(unique_images)} unique high-quality images")
+                
+#                 for i, img_url in enumerate(unique_images[:limit], start=1):
+#                     # ساخت thumbnail از original
+#                     thumb_url = img_url.replace('/originals/', '/236x/').replace('/736x/', '/236x/')
+                    
+#                     results.append({
+#                         'id': str(i),
+#                         'title': f'Pinterest Image {i}',
+#                         'thumbnail': thumb_url,
+#                         'original': img_url
+#                     })
+                
+#                 print(f"[Pinterest] Returning {len(results)} results")
+                    
+#     except Exception as e:
+#         print(f"[Pinterest] Exception: {e}")
+#         import traceback
+#         traceback.print_exc()
+    
+#     return results
+
 async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
     clean_query = query.replace('/pin', '').strip()
     encoded_query = urllib.parse.quote(clean_query)
@@ -27,42 +99,102 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
     results = []
     
     try:
+        cookies = load_cookies('/root/msh_bot/pinterest_cookies.txt')
+        
         connector = aiohttp.TCPConnector(ssl=False)
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
             async with session.get(url, headers=headers, timeout=20) as response:
                 print(f"[Pinterest] Status: {response.status}")
                 html = await response.text()
                 print(f"[Pinterest] HTML size: {len(html)} bytes")
                 
-                # استخراج تمام URLهای تصویر pinimg
-                image_pattern = r'https://i\.pinimg\.com/(?:originals|736x|564x|474x)/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|gif)'
-                all_images = re.findall(image_pattern, html)
+                # استخراج JSON data از صفحه
+                json_pattern = r'<script id="__PWS_DATA__" type="application/json">({.*?})</script>'
+                json_match = re.search(json_pattern, html, re.DOTALL)
                 
-                # حذف تکراری‌ها و فیلتر کردن
-                unique_images = []
-                seen = set()
+                if json_match:
+                    import json
+                    try:
+                        data = json.loads(json_match.group(1))
+                        # پیدا کردن pins در ساختار JSON
+                        pins = []
+                        
+                        # جستجو در ساختار تو در تو
+                        def find_pins(obj):
+                            if isinstance(obj, dict):
+                                if 'id' in obj and 'images' in obj and 'link' in obj:
+                                    pins.append(obj)
+                                for value in obj.values():
+                                    find_pins(value)
+                            elif isinstance(obj, list):
+                                for item in obj:
+                                    find_pins(item)
+                        
+                        find_pins(data)
+                        
+                        print(f"[Pinterest] Found {len(pins)} pins in JSON")
+                        
+                        for i, pin in enumerate(pins[:limit], start=1):
+                            try:
+                                pin_id = pin.get('id', '')
+                                description = pin.get('description', '') or pin.get('grid_description', '') or ''
+                                pin_url = f"https://www.pinterest.com/pin/{pin_id}/"
+                                
+                                # استخراج URL تصویر
+                                images = pin.get('images', {})
+                                orig = images.get('orig', {})
+                                img_url = orig.get('url', '')
+                                
+                                if img_url and pin_id:
+                                    # ساخت thumbnail URL
+                                    thumb_url = img_url.replace('/originals/', '/236x/')
+                                    
+                                    results.append({
+                                        'id': str(i),
+                                        'pin_id': pin_id,
+                                        'title': description[:100] if description else f'Pinterest Image {i}',
+                                        'description': description,
+                                        'url': pin_url,
+                                        'thumbnail': thumb_url,
+                                        'original': img_url
+                                    })
+                                    print(f"[Pinterest] Added pin {i}: {pin_id}")
+                            except Exception as e:
+                                print(f"[Pinterest] Error parsing pin: {e}")
+                                continue
+                        
+                    except json.JSONDecodeError as e:
+                        print(f"[Pinterest] JSON parse error: {e}")
                 
-                for img_url in all_images:
-                    # فقط تصاویر با کیفیت بالا
-                    if '/originals/' in img_url or '/736x/' in img_url:
-                        # استخراج ID یکتا از URL
-                        img_id = img_url.split('/')[-1].split('.')[0]
-                        if img_id not in seen:
-                            seen.add(img_id)
-                            unique_images.append(img_url)
-                
-                print(f"[Pinterest] Found {len(unique_images)} unique high-quality images")
-                
-                for i, img_url in enumerate(unique_images[:limit], start=1):
-                    # ساخت thumbnail از original
-                    thumb_url = img_url.replace('/originals/', '/236x/').replace('/736x/', '/236x/')
+                # اگر JSON کار نکرد، از روش قبلی استفاده کن
+                if not results:
+                    print("[Pinterest] Falling back to regex method")
+                    image_pattern = r'https://i\.pinimg\.com/[^"\'>\s]+'
+                    all_images = re.findall(image_pattern, html)
                     
-                    results.append({
-                        'id': str(i),
-                        'title': f'Pinterest Image {i}',
-                        'thumbnail': thumb_url,
-                        'original': img_url
-                    })
+                    unique_images = []
+                    seen = set()
+                    
+                    for img_url in all_images:
+                        match = re.search(r'/([a-f0-9]{32,})\.(jpg|png|gif)', img_url)
+                        if match:
+                            img_id = match.group(1)
+                            if img_id not in seen and len(img_id) >= 32:
+                                seen.add(img_id)
+                                original_url = f"https://i.pinimg.com/originals/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
+                                thumb_url = f"https://i.pinimg.com/236x/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
+                                unique_images.append((thumb_url, original_url))
+                    
+                    for i, (thumb_url, orig_url) in enumerate(unique_images[:limit], start=1):
+                        results.append({
+                            'id': str(i),
+                            'pin_id': '',
+                            'title': f'Pinterest Image {i}',
+                            'description': '',
+                            'url': '',
+                            'thumbnail': thumb_url,
+                            'original': orig_url
+                        })
                 
                 print(f"[Pinterest] Returning {len(results)} results")
                     
@@ -73,12 +205,8 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
     
     return results
 
-    
-    return results
-import aiohttp
-import json
 
-import urllib
+
 
 async def debug_pinterest(query: str):
     """
