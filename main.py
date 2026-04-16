@@ -12,7 +12,7 @@ from handlers.image import image_command
 # from handlers.instagram import instagram_command
 from telegram.ext import CommandHandler, CallbackQueryHandler
 from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command
-from handlers.pinterest import pin_command, handle_pin_download_callback
+from handlers.pinterest import pin_command, pin_download_callback
 from telegram.ext import CommandHandler, CallbackQueryHandler
 
 # Setup logging
@@ -65,7 +65,7 @@ def main() -> None:
 
     #پینترست
     application.add_handler(CommandHandler("pin", pin_command))
-    application.add_handler(CallbackQueryHandler(handle_pin_download_callback, pattern=r"^pindl:"))
+    application.add_handler(CallbackQueryHandler(pin_download_callback, pattern=r"^pindl:"))
 
 
 
