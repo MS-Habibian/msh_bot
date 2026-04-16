@@ -1,89 +1,12 @@
 import aiohttp
-import re
 import http.cookiejar
 from typing import List, Dict
-import urllib.parse
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-
-from utils.pinterest_helper import search_pinterest_rss
-
-def load_cookies(cookie_file: str) -> dict:
-    """Load cookies from Netscape format file"""
-    jar = http.cookiejar.MozillaCookieJar()
-    jar.load(cookie_file, ignore_discard=True, ignore_expires=True)
-    cookies = {}
-    for cookie in jar:
-        if 'pinterest' in cookie.domain:
-            cookies[cookie.name] = cookie.value
-    print(f"[Pinterest] Loaded {len(cookies)} cookies")
-    return cookies
+from utils.pinterest_helper import search_pinterest_rss, load_cookies
 
 
 
-
-# async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     if not context.args:
-#         await update.message.reply_text("لطفاً یک عبارت برای جستجو وارد کنید.\nمثال: `/pin cats`", parse_mode="Markdown")
-#         return
-
-#     query = " ".join(context.args)
-#     processing_msg = await update.message.reply_text(f"🔍 در حال جستجوی تصاویر برای '{query}'...")
-
-#     results = await search_pinterest_rss(query, limit=10)
-
-#     if not results:
-#         await processing_msg.edit_text("❌ نتیجه‌ای یافت نشد. لطفاً دوباره تلاش کنید.")
-#         return
-
-#     context.user_data['pin_results'] = results
-
-#     cookies = load_cookies('/root/msh_bot/pinterest_cookies.txt')
-    
-#     headers = {
-#         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
-#         'Accept': 'image/avif,image/webp,*/*',
-#         'Accept-Language': 'en-US,en;q=0.5',
-#         'Accept-Encoding': 'gzip, deflate, br',
-#         'Referer': 'https://www.pinterest.com/',
-#         'DNT': '1',
-#         'Connection': 'keep-alive',
-#         'Sec-Fetch-Dest': 'image',
-#         'Sec-Fetch-Mode': 'no-cors',
-#         'Sec-Fetch-Site': 'cross-site',
-#     }
-
-#     await processing_msg.delete()
-
-#     connector = aiohttp.TCPConnector(ssl=False)
-#     async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
-#         for item in results:
-#             try:
-#                 async with session.get(item['thumbnail'], headers=headers, timeout=15) as img_response:
-#                     print(f"[Pinterest] Image {item['id']} status: {img_response.status}")
-#                     if img_response.status == 200:
-#                         img_bytes = await img_response.read()
-                        
-#                         # دکمه دانلود برای هر تصویر
-#                         keyboard = [[InlineKeyboardButton(
-#                             text=f"📥 دانلود کیفیت اصلی",
-#                             callback_data=f"pindl_{item['id']}"
-#                         )]]
-#                         reply_markup = InlineKeyboardMarkup(keyboard)
-                        
-#                         # ارسال تک‌تک با شماره
-#                         await update.message.reply_photo(
-#                             photo=img_bytes,
-#                             caption=f"🖼 تصویر شماره {item['id']}",
-#                             reply_markup=reply_markup
-#                         )
-                        
-#                         print(f"[Pinterest] Sent image {item['id']} ({len(img_bytes)} bytes)")
-#                     else:
-#                         print(f"[Pinterest] Failed to download image {item['id']}: {img_response.status}")
-#             except Exception as e:
-#                 print(f"[Pinterest] Error downloading image {item['id']}: {e}")
-#                 continue
 
 async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
