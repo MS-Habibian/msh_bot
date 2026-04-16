@@ -35,7 +35,7 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'X-APP-VERSION': 'cb1c7f9',  # Update this - check network tab in browser
         'X-Pinterest-AppState': 'active',
         'X-CSRFToken': cookies.get('csrftoken', ''),  # Add CSRF token from cookies
-        'Referer': f'https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed',
+        'Referer': f'https://www.pinterest.com/search/pins/?q={query}&rs=typed',
         'Origin': 'https://www.pinterest.com',
         'DNT': '1',
         'Connection': 'keep-alive',
