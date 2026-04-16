@@ -125,7 +125,7 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
 
 
 # async def _search_pinterest_html(query: str, limit: int, cookies: dict) -> List[Dict]:
-#     """fallback روش قدیمی regex"""
+#     """Fallback: parse initial Redux state from HTML"""
 #     clean_query = query.replace('/pin', '').strip()
 #     encoded_query = urllib.parse.quote(clean_query)
 #     url = f"https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed"
@@ -141,22 +141,61 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
 #     async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
 #         async with session.get(url, headers=headers, timeout=20) as response:
 #             html = await response.text()
-#             image_pattern = r'https://i\.pinimg\.com/[^"\'>\s]+'
-#             all_images = re.findall(image_pattern, html)
             
-#             seen = set()
-#             unique_images = []
-#             for img_url in all_images:
-#                 match = re.search(r'/([a-f0-9]{32,})\.(jpg|png|gif)', img_url)
+#             # Try to find Redux state with pins
+#             patterns = [
+#                 r'<script[^>]*id="__PWS_DATA__"[^>]*>(.*?)</script>',
+#                 r'<script[^>]*>window\.__INITIAL_STATE__\s*=\s*({.*?});</script>',
+#                 r'"resource_response":\s*({.*?"data".*?})',
+#             ]
+            
+#             for pattern in patterns:
+#                 match = re.search(pattern, html, re.DOTALL)
 #                 if match:
-#                     img_id = match.group(1)
-#                     if img_id not in seen and len(img_id) >= 32:
-#                         seen.add(img_id)
-#                         original_url = f"https://i.pinimg.com/originals/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
-#                         thumb_url = f"https://i.pinimg.com/236x/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
-#                         unique_images.append((thumb_url, original_url))
+#                     try:
+#                         data = json.loads(match.group(1))
+                        
+#                         # Try different paths to find pins
+#                         pin_sources = [
+#                             data.get('props', {}).get('initialReduxState', {}).get('pins', {}),
+#                             data.get('initialReduxState', {}).get('pins', {}),
+#                             data.get('resourceResponses', [{}])[0].get('response', {}).get('data', {}).get('results', []),
+#                             data.get('data', {}).get('results', []),
+#                         ]
+                        
+#                         for pins_data in pin_sources:
+#                             if isinstance(pins_data, dict):
+#                                 # pins is a dict of pin_id -> pin_data
+#                                 for i, (pin_id, pin) in enumerate(list(pins_data.items())[:limit], start=1):
+#                                     if not isinstance(pin, dict):
+#                                         continue
+#                                     result = _extract_pin_data(pin, pin_id, i)
+#                                     if result:
+#                                         results.append(result)
+#                             elif isinstance(pins_data, list):
+#                                 # pins is a list
+#                                 for i, pin in enumerate(pins_data[:limit], start=1):
+#                                     if not isinstance(pin, dict):
+#                                         continue
+#                                     pin_id = pin.get('id', str(i))
+#                                     result = _extract_pin_data(pin, pin_id, i)
+#                                     if result:
+#                                         results.append(result)
+                            
+#                             if results:
+#                                 print(f"[Pinterest] Found {len(results)} pins in HTML")
+#                                 return results
+                    
+#                     except Exception as e:
+#                         print(f"[Pinterest] Error parsing pattern: {e}")
+#                         continue
             
-#             for i, (thumb_url, orig_url) in enumerate(unique_images[:limit], start=1):
+#             # Final fallback: regex scraping
+#             print("[Pinterest] All JSON parsing failed, using regex")
+#             img_urls = re.findall(r'https://i\.pinimg\.com/originals/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|gif)', html)
+            
+#             for i, img_url in enumerate(img_urls[:limit], start=1):
+#                 thumb_url = re.sub(r'/originals/', '/236x/', img_url)
 #                 results.append({
 #                     'id': str(i),
 #                     'pin_id': '',
@@ -167,19 +206,19 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
 #                     'link': '',
 #                     'url': '',
 #                     'thumbnail': thumb_url,
-#                     'original': orig_url
+#                     'original': img_url
 #                 })
     
 #     print(f"[Pinterest] HTML fallback returned {len(results)} results")
 #     return results
+
 async def _search_pinterest_html(query: str, limit: int, cookies: dict) -> List[Dict]:
-    """Fallback: parse initial Redux state from HTML"""
     clean_query = query.replace('/pin', '').strip()
     encoded_query = urllib.parse.quote(clean_query)
     url = f"https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Referer': 'https://www.pinterest.com/',
     }
@@ -190,71 +229,58 @@ async def _search_pinterest_html(query: str, limit: int, cookies: dict) -> List[
         async with session.get(url, headers=headers, timeout=20) as response:
             html = await response.text()
             
-            # Try to find Redux state with pins
-            patterns = [
-                r'<script[^>]*id="__PWS_DATA__"[^>]*>(.*?)</script>',
-                r'<script[^>]*>window\.__INITIAL_STATE__\s*=\s*({.*?});</script>',
-                r'"resource_response":\s*({.*?"data".*?})',
-            ]
-            
-            for pattern in patterns:
-                match = re.search(pattern, html, re.DOTALL)
-                if match:
-                    try:
-                        data = json.loads(match.group(1))
-                        
-                        # Try different paths to find pins
-                        pin_sources = [
-                            data.get('props', {}).get('initialReduxState', {}).get('pins', {}),
-                            data.get('initialReduxState', {}).get('pins', {}),
-                            data.get('resourceResponses', [{}])[0].get('response', {}).get('data', {}).get('results', []),
-                            data.get('data', {}).get('results', []),
-                        ]
-                        
-                        for pins_data in pin_sources:
-                            if isinstance(pins_data, dict):
-                                # pins is a dict of pin_id -> pin_data
-                                for i, (pin_id, pin) in enumerate(list(pins_data.items())[:limit], start=1):
-                                    if not isinstance(pin, dict):
-                                        continue
-                                    result = _extract_pin_data(pin, pin_id, i)
-                                    if result:
-                                        results.append(result)
-                            elif isinstance(pins_data, list):
-                                # pins is a list
-                                for i, pin in enumerate(pins_data[:limit], start=1):
-                                    if not isinstance(pin, dict):
-                                        continue
-                                    pin_id = pin.get('id', str(i))
-                                    result = _extract_pin_data(pin, pin_id, i)
-                                    if result:
-                                        results.append(result)
-                            
-                            if results:
-                                print(f"[Pinterest] Found {len(results)} pins in HTML")
-                                return results
+            # Only parse __PWS_DATA__ — other patterns grab broken JSON
+            match = re.search(r'<script[^>]*id="__PWS_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+            if match:
+                try:
+                    data = json.loads(match.group(1))
                     
-                    except Exception as e:
-                        print(f"[Pinterest] Error parsing pattern: {e}")
-                        continue
+                    # Save for debugging
+                    with open('/tmp/pinterest_pws_debug.json', 'w') as f:
+                        json.dump(data, f, indent=2)
+                    
+                    # Print top-level keys to find where pins are
+                    print(f"[Pinterest] __PWS_DATA__ top keys: {list(data.keys())}")
+                    
+                    props = data.get('props', {})
+                    print(f"[Pinterest] props keys: {list(props.keys())}")
+                    
+                    redux = props.get('initialReduxState', {})
+                    print(f"[Pinterest] redux keys: {list(redux.keys())}")
+                    
+                    pins_data = redux.get('pins', {})
+                    print(f"[Pinterest] pins count: {len(pins_data)}")
+                    
+                    for i, (pin_id, pin) in enumerate(list(pins_data.items())[:limit], start=1):
+                        if not isinstance(pin, dict):
+                            continue
+                        result = _extract_pin_data(pin, pin_id, i)
+                        if result:
+                            results.append(result)
+                    
+                    if results:
+                        print(f"[Pinterest] Got {len(results)} pins from __PWS_DATA__")
+                        return results
+                    else:
+                        print(f"[Pinterest] __PWS_DATA__ parsed OK but no pins found")
+                
+                except json.JSONDecodeError as e:
+                    print(f"[Pinterest] __PWS_DATA__ JSON error: {e}")
+            else:
+                print("[Pinterest] __PWS_DATA__ tag not found in HTML")
             
-            # Final fallback: regex scraping
-            print("[Pinterest] All JSON parsing failed, using regex")
-            img_urls = re.findall(r'https://i\.pinimg\.com/originals/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|gif)', html)
-            
+            # Regex fallback
+            print("[Pinterest] Using regex fallback")
+            img_urls = re.findall(
+                r'https://i\.pinimg\.com/originals/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|gif)',
+                html
+            )
             for i, img_url in enumerate(img_urls[:limit], start=1):
                 thumb_url = re.sub(r'/originals/', '/236x/', img_url)
                 results.append({
-                    'id': str(i),
-                    'pin_id': '',
-                    'title': f'Pinterest Image {i}',
-                    'description': '',
-                    'author': '',
-                    'domain': '',
-                    'link': '',
-                    'url': '',
-                    'thumbnail': thumb_url,
-                    'original': img_url
+                    'id': str(i), 'pin_id': '', 'title': f'Pinterest Image {i}',
+                    'description': '', 'author': '', 'domain': '', 'link': '',
+                    'url': '', 'thumbnail': thumb_url, 'original': img_url
                 })
     
     print(f"[Pinterest] HTML fallback returned {len(results)} results")
