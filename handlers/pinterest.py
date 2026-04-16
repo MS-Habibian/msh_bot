@@ -127,7 +127,7 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',
-jj        'Cache-Control': 'max-age=0',
+        'Cache-Control': 'max-age=0',
     }
     
     results = []
