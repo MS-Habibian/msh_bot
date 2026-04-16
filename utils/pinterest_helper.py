@@ -123,8 +123,56 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
     return results
 
 
+# async def _search_pinterest_html(query: str, limit: int, cookies: dict) -> List[Dict]:
+#     """fallback روش قدیمی regex"""
+#     clean_query = query.replace('/pin', '').strip()
+#     encoded_query = urllib.parse.quote(clean_query)
+#     url = f"https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed"
+    
+#     headers = {
+#         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
+#         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+#         'Referer': 'https://www.pinterest.com/',
+#     }
+    
+#     results = []
+#     connector = aiohttp.TCPConnector(ssl=False)
+#     async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
+#         async with session.get(url, headers=headers, timeout=20) as response:
+#             html = await response.text()
+#             image_pattern = r'https://i\.pinimg\.com/[^"\'>\s]+'
+#             all_images = re.findall(image_pattern, html)
+            
+#             seen = set()
+#             unique_images = []
+#             for img_url in all_images:
+#                 match = re.search(r'/([a-f0-9]{32,})\.(jpg|png|gif)', img_url)
+#                 if match:
+#                     img_id = match.group(1)
+#                     if img_id not in seen and len(img_id) >= 32:
+#                         seen.add(img_id)
+#                         original_url = f"https://i.pinimg.com/originals/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
+#                         thumb_url = f"https://i.pinimg.com/236x/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
+#                         unique_images.append((thumb_url, original_url))
+            
+#             for i, (thumb_url, orig_url) in enumerate(unique_images[:limit], start=1):
+#                 results.append({
+#                     'id': str(i),
+#                     'pin_id': '',
+#                     'title': f'Pinterest Image {i}',
+#                     'description': '',
+#                     'author': '',
+#                     'domain': '',
+#                     'link': '',
+#                     'url': '',
+#                     'thumbnail': thumb_url,
+#                     'original': orig_url
+#                 })
+    
+#     print(f"[Pinterest] HTML fallback returned {len(results)} results")
+#     return results
 async def _search_pinterest_html(query: str, limit: int, cookies: dict) -> List[Dict]:
-    """fallback روش قدیمی regex"""
+    """Fallback: parse __PWS_DATA__ from HTML"""
     clean_query = query.replace('/pin', '').strip()
     encoded_query = urllib.parse.quote(clean_query)
     url = f"https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed"
@@ -140,34 +188,64 @@ async def _search_pinterest_html(query: str, limit: int, cookies: dict) -> List[
     async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
         async with session.get(url, headers=headers, timeout=20) as response:
             html = await response.text()
-            image_pattern = r'https://i\.pinimg\.com/[^"\'>\s]+'
-            all_images = re.findall(image_pattern, html)
             
-            seen = set()
-            unique_images = []
-            for img_url in all_images:
-                match = re.search(r'/([a-f0-9]{32,})\.(jpg|png|gif)', img_url)
-                if match:
-                    img_id = match.group(1)
-                    if img_id not in seen and len(img_id) >= 32:
-                        seen.add(img_id)
-                        original_url = f"https://i.pinimg.com/originals/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
-                        thumb_url = f"https://i.pinimg.com/236x/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
-                        unique_images.append((thumb_url, original_url))
+            # Extract __PWS_DATA__
+            match = re.search(r'<script[^>]*id="__PWS_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+            if match:
+                import json
+                try:
+                    data = json.loads(match.group(1))
+                    
+                    # Save for debugging
+                    with open('/tmp/pinterest_pws_debug.json', 'w') as f:
+                        json.dump(data, f, indent=2)
+                    print("[Pinterest] __PWS_DATA__ saved to /tmp/pinterest_pws_debug.json")
+                    
+                    # Navigate structure: props.initialReduxState.pins
+                    pins_data = data.get('props', {}).get('initialReduxState', {}).get('pins', {})
+                    
+                    for i, (pin_id, pin) in enumerate(list(pins_data.items())[:limit], start=1):
+                        if not isinstance(pin, dict):
+                            continue
+                        
+                        images = pin.get('images', {}) or {}
+                        orig = images.get('orig', {}) or {}
+                        img_url = orig.get('url', '')
+                        
+                        if not img_url:
+                            continue
+                        
+                        description = pin.get('description', '') or pin.get('grid_description', '') or ''
+                        pinner = pin.get('pinner', {}) or {}
+                        author = pinner.get('full_name', '') or pinner.get('username', '')
+                        domain = pin.get('domain', '')
+                        link = pin.get('link', '')
+                        
+                        thumb_url = re.sub(r'/originals/', '/236x/', img_url)
+                        
+                        results.append({
+                            'id': str(i),
+                            'pin_id': pin_id,
+                            'title': description[:100] if description else f'Pinterest Image {i}',
+                            'description': description,
+                            'author': author,
+                            'domain': domain,
+                            'link': link,
+                            'url': f"https://www.pinterest.com/pin/{pin_id}/",
+                            'thumbnail': thumb_url,
+                            'original': img_url
+                        })
+                        print(f"[Pinterest] HTML Pin {i}: {pin_id} | author={author}")
+                    
+                except Exception as e:
+                    print(f"[Pinterest] Error parsing __PWS_DATA__: {e}")
+                    import traceback
+                    traceback.print_exc()
             
-            for i, (thumb_url, orig_url) in enumerate(unique_images[:limit], start=1):
-                results.append({
-                    'id': str(i),
-                    'pin_id': '',
-                    'title': f'Pinterest Image {i}',
-                    'description': '',
-                    'author': '',
-                    'domain': '',
-                    'link': '',
-                    'url': '',
-                    'thumbnail': thumb_url,
-                    'original': orig_url
-                })
+            # Fallback to regex if __PWS_DATA__ fails
+            if not results:
+                print("[Pinterest] __PWS_DATA__ failed, using regex fallback")
+                # ... your existing regex code ...
     
     print(f"[Pinterest] HTML fallback returned {len(results)} results")
     return results
