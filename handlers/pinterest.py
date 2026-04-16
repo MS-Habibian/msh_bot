@@ -6,6 +6,8 @@ import urllib.parse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ContextTypes
 
+from utils.pinterest_helper import search_pinterest_rss
+
 def load_cookies(cookie_file: str) -> dict:
     """Load cookies from Netscape format file"""
     jar = http.cookiejar.MozillaCookieJar()
@@ -17,77 +19,7 @@ def load_cookies(cookie_file: str) -> dict:
     print(f"[Pinterest] Loaded {len(cookies)} cookies")
     return cookies
 
-async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
-    clean_query = query.replace('/pin', '').strip()
-    encoded_query = urllib.parse.quote(clean_query)
-    
-    url = f"https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed"
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0',
-    }
-    
-    results = []
-    
-    try:
-        # بارگذاری کوکی‌ها
-        cookies = load_cookies('/root/msh_bot/pinterest_cookies.txt')
-        
-        connector = aiohttp.TCPConnector(ssl=False)
-        async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
-            async with session.get(url, headers=headers, timeout=20) as response:
-                print(f"[Pinterest] Status: {response.status}")
-                html = await response.text()
-                print(f"[Pinterest] HTML size: {len(html)} bytes")
-                
-                # استخراج تمام URLهای تصویر
-                image_pattern = r'https://i\.pinimg\.com/[^"\'>\s]+'
-                all_images = re.findall(image_pattern, html)
-                
-                # حذف تکراری‌ها
-                unique_images = []
-                seen = set()
-                
-                for img_url in all_images:
-                    # استخراج ID یکتا
-                    match = re.search(r'/([a-f0-9]{32,})\.(jpg|png|gif)', img_url)
-                    if match:
-                        img_id = match.group(1)
-                        if img_id not in seen and len(img_id) >= 32:
-                            seen.add(img_id)
-                            # ساخت URL با کیفیت بالا
-                            original_url = f"https://i.pinimg.com/originals/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
-                            thumb_url = f"https://i.pinimg.com/236x/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
-                            unique_images.append((thumb_url, original_url))
-                
-                print(f"[Pinterest] Found {len(unique_images)} unique images")
-                
-                for i, (thumb_url, orig_url) in enumerate(unique_images[:limit], start=1):
-                    results.append({
-                        'id': str(i),
-                        'title': f'Pinterest Image {i}',
-                        'thumbnail': thumb_url,
-                        'original': orig_url
-                    })
-                
-                print(f"[Pinterest] Returning {len(results)} results")
-                    
-    except Exception as e:
-        print(f"[Pinterest] Exception: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    return results
+
 
 
 # async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
