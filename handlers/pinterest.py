@@ -12,57 +12,47 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     processing_msg = await update.message.reply_text(f"🔍 در حال جستجوی تصاویر برای '{query}'...")
 
-    # اجرای دیباگ
-    await debug_pinterest(query)
-    
-    await processing_msg.edit_text("✅ Debug completed. Check server logs and files.")
-    # if not context.args:
-    #     await update.message.reply_text("لطفاً یک عبارت برای جستجو وارد کنید.\nمثال: `/pin cats`", parse_mode="Markdown")
-    #     return
+    results = await search_pinterest_rss(query, limit=10)
 
-    # query = " ".join(context.args)
-    # processing_msg = await update.message.reply_text(f"🔍 در حال جستجوی تصاویر برای '{query}'...")
+    if not results:
+        await processing_msg.edit_text("❌ نتیجه‌ای یافت نشد. لطفاً دوباره تلاش کنید.")
+        return
 
-    # results = await search_pinterest_rss(query, limit=10)
+    context.user_data['pin_results'] = results
 
-    # if not results:
-    #     await processing_msg.edit_text("❌ نتیجه‌ای یافت نشد. لطفاً دوباره تلاش کنید.")
-    #     return
+    media_group = []
+    keyboard = []
+    row = []
 
-    # context.user_data['pin_results'] = results
-
-    # media_group = []
-    # keyboard = []
-    # row = []
-
-    # for item in results:
-    #     try:
-    #         media_group.append(InputMediaPhoto(media=item['thumbnail']))
-    #         btn = InlineKeyboardButton(text=item['id'], callback_data=f"pindl_{item['id']}")
-    #         row.append(btn)
+    for item in results:
+        try:
+            media_group.append(InputMediaPhoto(media=item['thumbnail']))
+            btn = InlineKeyboardButton(text=item['id'], callback_data=f"pindl_{item['id']}")
+            row.append(btn)
             
-    #         if len(row) == 5:
-    #             keyboard.append(row)
-    #             row = []
-    #     except Exception as e:
-    #         print(f"Error adding image {item['id']}: {e}")
-    #         continue
+            if len(row) == 5:
+                keyboard.append(row)
+                row = []
+        except Exception as e:
+            print(f"[Pinterest] Error adding image {item['id']}: {e}")
+            continue
             
-    # if row:
-    #     keyboard.append(row)
+    if row:
+        keyboard.append(row)
 
-    # if not media_group:
-    #     await processing_msg.edit_text("❌ خطا در بارگذاری تصاویر.")
-    #     return
+    if not media_group:
+        await processing_msg.edit_text("❌ خطا در بارگذاری تصاویر.")
+        return
 
-    # await processing_msg.delete()
-    # await update.message.reply_media_group(media=media_group)
+    await processing_msg.delete()
+    await update.message.reply_media_group(media=media_group)
     
-    # reply_markup = InlineKeyboardMarkup(keyboard)
-    # await update.message.reply_text(
-    #     "👇 برای دانلود عکس با کیفیت اصلی، شماره آن را انتخاب کنید:",
-    #     reply_markup=reply_markup
-    # )
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "👇 برای دانلود عکس با کیفیت اصلی، شماره آن را انتخاب کنید:",
+        reply_markup=reply_markup
+    )
+
 
 
 async def handle_pin_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
