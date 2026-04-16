@@ -65,7 +65,7 @@ def main() -> None:
 
     #پینترست
     application.add_handler(CommandHandler("pin", pin_command))
-    application.add_handler(CallbackQueryHandler(pin_download_callback, pattern=r"^pindl:"))
+    application.add_handler(CallbackQueryHandler(pin_download_callback, pattern="^pindl_"))
 
 
 
