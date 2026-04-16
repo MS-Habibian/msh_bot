@@ -205,8 +205,14 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         caption = f"🖼 تصویر شماره {item['id']}\n"
                         if item.get('description'):
                             caption += f"\n📝 {item['description'][:200]}\n"
-                        if item.get('url'):
-                            caption += f"\n🔗 {item['url']}"
+                        if item.get('author'):
+                            caption += f"\n👤 {item['author']}\n"
+                        if item.get('domain'):
+                            caption += f"🌐 {item['domain']}\n"
+                        if item.get('link'):
+                            caption += f"🔗 {item['link']}\n"
+                        elif item.get('url'):
+                            caption += f"🔗 {item['url']}\n"
                         
                         await update.message.reply_photo(
                             photo=img_bytes,
