@@ -28,15 +28,21 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
-        'Accept': 'image/avif,image/webp,*/*',
+        'Accept': 'application/json, text/javascript, */*, q=0.01',
         'Accept-Language': 'en-US,en;q=0.5',
         'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://www.pinterest.com/',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-APP-VERSION': 'cb1c7f9',  # Update this - check network tab in browser
+        'X-Pinterest-AppState': 'active',
+        'X-CSRFToken': cookies.get('csrftoken', ''),  # Add CSRF token from cookies
+        'Referer': f'https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed',
+        'Origin': 'https://www.pinterest.com',
         'DNT': '1',
         'Connection': 'keep-alive',
-        'Sec-Fetch-Dest': 'image',
-        'Sec-Fetch-Mode': 'no-cors',
-        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+        'TE': 'trailers',
     }
 
     await processing_msg.delete()
