@@ -108,96 +108,17 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
                 html = await response.text()
                 print(f"[Pinterest] HTML size: {len(html)} bytes")
                 
-                # استخراج JSON data از صفحه
-                json_pattern = r'<script id="__PWS_DATA__" type="application/json">({.*?})</script>'
-                json_match = re.search(json_pattern, html, re.DOTALL)
+                # دامپ اول 2000 کاراکتر برای دیباگ
+                print(f"[Pinterest] HTML preview:\n{html[:2000]}")
                 
-                if json_match:
-                    import json
-                    try:
-                        data = json.loads(json_match.group(1))
-                        # پیدا کردن pins در ساختار JSON
-                        pins = []
-                        
-                        # جستجو در ساختار تو در تو
-                        def find_pins(obj):
-                            if isinstance(obj, dict):
-                                if 'id' in obj and 'images' in obj and 'link' in obj:
-                                    pins.append(obj)
-                                for value in obj.values():
-                                    find_pins(value)
-                            elif isinstance(obj, list):
-                                for item in obj:
-                                    find_pins(item)
-                        
-                        find_pins(data)
-                        
-                        print(f"[Pinterest] Found {len(pins)} pins in JSON")
-                        
-                        for i, pin in enumerate(pins[:limit], start=1):
-                            try:
-                                pin_id = pin.get('id', '')
-                                description = pin.get('description', '') or pin.get('grid_description', '') or ''
-                                pin_url = f"https://www.pinterest.com/pin/{pin_id}/"
-                                
-                                # استخراج URL تصویر
-                                images = pin.get('images', {})
-                                orig = images.get('orig', {})
-                                img_url = orig.get('url', '')
-                                
-                                if img_url and pin_id:
-                                    # ساخت thumbnail URL
-                                    thumb_url = img_url.replace('/originals/', '/236x/')
-                                    
-                                    results.append({
-                                        'id': str(i),
-                                        'pin_id': pin_id,
-                                        'title': description[:100] if description else f'Pinterest Image {i}',
-                                        'description': description,
-                                        'url': pin_url,
-                                        'thumbnail': thumb_url,
-                                        'original': img_url
-                                    })
-                                    print(f"[Pinterest] Added pin {i}: {pin_id}")
-                            except Exception as e:
-                                print(f"[Pinterest] Error parsing pin: {e}")
-                                continue
-                        
-                    except json.JSONDecodeError as e:
-                        print(f"[Pinterest] JSON parse error: {e}")
+                # پیدا کردن تمام script tagها
+                script_tags = re.findall(r'<script[^>]*>(.*?)</script>', html, re.DOTALL)
+                print(f"[Pinterest] Found {len(script_tags)} script tags")
                 
-                # اگر JSON کار نکرد، از روش قبلی استفاده کن
-                if not results:
-                    print("[Pinterest] Falling back to regex method")
-                    image_pattern = r'https://i\.pinimg\.com/[^"\'>\s]+'
-                    all_images = re.findall(image_pattern, html)
-                    
-                    unique_images = []
-                    seen = set()
-                    
-                    for img_url in all_images:
-                        match = re.search(r'/([a-f0-9]{32,})\.(jpg|png|gif)', img_url)
-                        if match:
-                            img_id = match.group(1)
-                            if img_id not in seen and len(img_id) >= 32:
-                                seen.add(img_id)
-                                original_url = f"https://i.pinimg.com/originals/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
-                                thumb_url = f"https://i.pinimg.com/236x/{img_id[:2]}/{img_id[2:4]}/{img_id[4:6]}/{img_id}.jpg"
-                                unique_images.append((thumb_url, original_url))
-                    
-                    for i, (thumb_url, orig_url) in enumerate(unique_images[:limit], start=1):
-                        results.append({
-                            'id': str(i),
-                            'pin_id': '',
-                            'title': f'Pinterest Image {i}',
-                            'description': '',
-                            'url': '',
-                            'thumbnail': thumb_url,
-                            'original': orig_url
-                        })
+                for i, script in enumerate(script_tags):
+                    if 'pinterest' in script.lower() or 'description' in script.lower() or 'images' in script.lower():
+                        print(f"[Pinterest] Script {i} preview: {script[:300]}")
                 
-                print(f"[Pinterest] Returning {len(results)} results")
-                    
     except Exception as e:
         print(f"[Pinterest] Exception: {e}")
         import traceback
