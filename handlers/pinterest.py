@@ -1,3 +1,4 @@
+import aiohttp
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from telegram.ext import ContextTypes
 # from utils.pinterest_helper import search_pinterest_async
@@ -20,23 +21,37 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data['pin_results'] = results
 
+    # دانلود تصاویر به صورت bytes
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
+        'Referer': 'https://www.pinterest.com/',
+    }
+
     media_group = []
     keyboard = []
     row = []
 
-    for item in results:
-        try:
-            media_group.append(InputMediaPhoto(media=item['thumbnail']))
-            btn = InlineKeyboardButton(text=item['id'], callback_data=f"pindl_{item['id']}")
-            row.append(btn)
-            
-            if len(row) == 5:
-                keyboard.append(row)
-                row = []
-        except Exception as e:
-            print(f"[Pinterest] Error adding image {item['id']}: {e}")
-            continue
-            
+    async with aiohttp.ClientSession() as session:
+        for item in results:
+            try:
+                async with session.get(item['thumbnail'], headers=headers, timeout=10) as img_response:
+                    if img_response.status == 200:
+                        img_bytes = await img_response.read()
+                        media_group.append(InputMediaPhoto(media=img_bytes))
+                        
+                        btn = InlineKeyboardButton(text=item['id'], callback_data=f"pindl_{item['id']}")
+                        row.append(btn)
+                        if len(row) == 5:
+                            keyboard.append(row)
+                            row = []
+                        
+                        print(f"[Pinterest] Downloaded image {item['id']} ({len(img_bytes)} bytes)")
+                    else:
+                        print(f"[Pinterest] Failed to download image {item['id']}: {img_response.status}")
+            except Exception as e:
+                print(f"[Pinterest] Error downloading image {item['id']}: {e}")
+                continue
+
     if row:
         keyboard.append(row)
 
@@ -46,12 +61,13 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await processing_msg.delete()
     await update.message.reply_media_group(media=media_group)
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         "👇 برای دانلود عکس با کیفیت اصلی، شماره آن را انتخاب کنید:",
         reply_markup=reply_markup
     )
+
 
 
 
