@@ -108,16 +108,27 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
                 html = await response.text()
                 print(f"[Pinterest] HTML size: {len(html)} bytes")
                 
-                # دامپ اول 2000 کاراکتر برای دیباگ
-                print(f"[Pinterest] HTML preview:\n{html[:2000]}")
+                # ذخیره HTML برای بررسی
+                with open('/tmp/pinterest_debug.html', 'w', encoding='utf-8') as f:
+                    f.write(html)
+                print("[Pinterest] HTML saved to /tmp/pinterest_debug.html")
                 
-                # پیدا کردن تمام script tagها
-                script_tags = re.findall(r'<script[^>]*>(.*?)</script>', html, re.DOTALL)
-                print(f"[Pinterest] Found {len(script_tags)} script tags")
+                # جستجوی JSON data
+                json_pattern = r'<script id="__PWS_DATA__" type="application/json">({.*?})</script>'
+                json_match = re.search(json_pattern, html, re.DOTALL)
                 
-                for i, script in enumerate(script_tags):
-                    if 'pinterest' in script.lower() or 'description' in script.lower() or 'images' in script.lower():
-                        print(f"[Pinterest] Script {i} preview: {script[:300]}")
+                if json_match:
+                    print("[Pinterest] Found __PWS_DATA__ script tag")
+                else:
+                    print("[Pinterest] __PWS_DATA__ NOT FOUND")
+                    # جستجوی سایر script tagها
+                    if 'window.__INITIAL_STATE__' in html:
+                        print("[Pinterest] Found window.__INITIAL_STATE__")
+                    if 'window.__PWS_DATA__' in html:
+                        print("[Pinterest] Found window.__PWS_DATA__")
+                    
+                    # نمایش اول 3000 کاراکتر
+                    print(f"[Pinterest] HTML start:\n{html[:3000]}")
                 
     except Exception as e:
         print(f"[Pinterest] Exception: {e}")
@@ -125,6 +136,7 @@ async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
         traceback.print_exc()
     
     return results
+
 
 
 
