@@ -218,93 +218,73 @@ async def _search_pinterest_html(query: str, limit: int, cookies: dict) -> List[
     url = f"https://www.pinterest.com/search/pins/?q={encoded_query}&rs=typed"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/124.0 Firefox/124.0',
-        'Accept': 'text/html',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Referer': 'https://www.pinterest.com/',
     }
     
+    results = []
     connector = aiohttp.TCPConnector(ssl=False)
     async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
         async with session.get(url, headers=headers, timeout=20) as response:
             html = await response.text()
-        
-        # Extract image URLs via regex
-        img_urls = re.findall(
-            r'https://i\.pinimg\.com/originals/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|gif)',
-            html
-        )
-        
-        # Also extract pin IDs from the same HTML
-        pin_ids = re.findall(r'"id":"(\d+)"', html)
-        
-        results = []
-        for i, img_url in enumerate(img_urls[:limit], start=1):
-            thumb_url = re.sub(r'/originals/', '/236x/', img_url)
-            pin_id = pin_ids[i-1] if i-1 < len(pin_ids) else ''
             
-            result = {
-                'id': str(i),
-                'pin_id': pin_id,
-                'title': f'Pinterest Image {i}',
-                'description': '',
-                'author': '',
-                'domain': '',
-                'link': f'https://www.pinterest.com/pin/{pin_id}/' if pin_id else '',
-                'url': f'https://www.pinterest.com/pin/{pin_id}/' if pin_id else '',
-                'thumbnail': thumb_url,
-                'original': img_url
-            }
-            
-            # Enrich with metadata from pin page
-            if pin_id:
-                result = await _enrich_pin_metadata(session, pin_id, result, cookies, headers)
-            
-            results.append(result)
-        
-        print(f"[Pinterest] HTML returned {len(results)} results")
-        return results
-
-
-async def _enrich_pin_metadata(session, pin_id: str, result: dict, cookies: dict, headers: dict) -> dict:
-    """Visit individual pin page to extract metadata from __PWS_DATA__"""
-    pin_url = f'https://www.pinterest.com/pin/{pin_id}/'
-    
-    try:
-        async with session.get(pin_url, headers=headers, cookies=cookies, timeout=15) as resp:
-            if resp.status != 200:
-                return result
-            
-            html = await resp.text()
-            
-            # On pin pages, __PWS_DATA__ contains actual pin data
+            # Only parse __PWS_DATA__ — other patterns grab broken JSON
             match = re.search(r'<script[^>]*id="__PWS_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
-            if not match:
-                return result
-            
-            data = json.loads(match.group(1))
-            
-            # Pin data is under props.initialReduxState.pins[pin_id]
-            props = data.get('props', {})
-            redux = props.get('initialReduxState', {})
-            pins = redux.get('pins', {})
-            pin_data = pins.get(pin_id, {})
-            
-            if pin_data:
-                result['description'] = pin_data.get('description', '')
-                result['title'] = pin_data.get('title') or pin_data.get('description', '')[:50] or result['title']
+            if match:
+                try:
+                    data = json.loads(match.group(1))
+                    
+                    # Save for debugging
+                    with open('/tmp/pinterest_pws_debug.json', 'w') as f:
+                        json.dump(data, f, indent=2)
+                    
+                    # Print top-level keys to find where pins are
+                    print(f"[Pinterest] __PWS_DATA__ top keys: {list(data.keys())}")
+                    
+                    props = data.get('props', {})
+                    print(f"[Pinterest] props keys: {list(props.keys())}")
+                    
+                    redux = props.get('initialReduxState', {})
+                    print(f"[Pinterest] redux keys: {list(redux.keys())}")
+                    
+                    pins_data = redux.get('pins', {})
+                    print(f"[Pinterest] pins count: {len(pins_data)}")
+                    
+                    for i, (pin_id, pin) in enumerate(list(pins_data.items())[:limit], start=1):
+                        if not isinstance(pin, dict):
+                            continue
+                        result = _extract_pin_data(pin, pin_id, i)
+                        if result:
+                            results.append(result)
+                    
+                    if results:
+                        print(f"[Pinterest] Got {len(results)} pins from __PWS_DATA__")
+                        return results
+                    else:
+                        print(f"[Pinterest] __PWS_DATA__ parsed OK but no pins found")
                 
-                pinner = pin_data.get('pinner', {})
-                result['author'] = pinner.get('full_name', '')
-                
-                result['domain'] = pin_data.get('domain', '')
-                result['link'] = pin_data.get('link', '') or pin_url
-                
-                print(f"[Pinterest] Enriched pin {pin_id} with metadata")
+                except json.JSONDecodeError as e:
+                    print(f"[Pinterest] __PWS_DATA__ JSON error: {e}")
+            else:
+                print("[Pinterest] __PWS_DATA__ tag not found in HTML")
+            
+            # Regex fallback
+            print("[Pinterest] Using regex fallback")
+            img_urls = re.findall(
+                r'https://i\.pinimg\.com/originals/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]{2}/[a-f0-9]+\.(?:jpg|png|gif)',
+                html
+            )
+            for i, img_url in enumerate(img_urls[:limit], start=1):
+                thumb_url = re.sub(r'/originals/', '/236x/', img_url)
+                results.append({
+                    'id': str(i), 'pin_id': '', 'title': f'Pinterest Image {i}',
+                    'description': '', 'author': '', 'domain': '', 'link': '',
+                    'url': '', 'thumbnail': thumb_url, 'original': img_url
+                })
     
-    except Exception as e:
-        print(f"[Pinterest] Failed to enrich pin {pin_id}: {e}")
-    
-    return result
+    print(f"[Pinterest] HTML fallback returned {len(results)} results")
+    return results
 
 
 def _extract_pin_data(pin: dict, pin_id: str, index: int) -> dict:
