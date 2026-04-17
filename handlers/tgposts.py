@@ -43,27 +43,39 @@ async def tgposts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     status_msg = await update.message.reply_text(f"⏳ در حال دریافت {limit} پست آخر از کانال {channel_username}...")
 
     try:
-        raw_posts = []
-        async for msg in tg_app.get_chat_history(channel_username, limit=limit):
-            raw_posts.append(msg)
+        grouped_posts = []
+        group_map = {}
 
-        if not raw_posts:
+        # گرفتن تاریخچه بدون محدودیت عددی ثابت در API، خودمان دستی متوقفش می‌کنیم
+        async for msg in tg_app.get_chat_history(channel_username):
+            if msg.media_group_id:
+                if msg.media_group_id in group_map:
+                    # این پیام متعلق به آلبومی است که قبلا دیده‌ایم، پس فقط به آن اضافه‌اش می‌کنیم
+                    group_map[msg.media_group_id].append(msg)
+                else:
+                    # یک آلبوم جدید پیدا کردیم. آیا به محدودیت رسیده‌ایم؟
+                    if len(grouped_posts) >= limit:
+                        break
+                    
+                    group_map[msg.media_group_id] = [msg]
+                    grouped_posts.append(group_map[msg.media_group_id])
+            else:
+                # یک پیام تکی (متن یا فایل بدون آلبوم) پیدا کردیم. آیا به محدودیت رسیده‌ایم؟
+                if len(grouped_posts) >= limit:
+                    break
+                
+                grouped_posts.append([msg])
+
+        if not grouped_posts:
             await status_msg.edit_text("❌ هیچ پستی یافت نشد یا کانال خصوصی/خالی است.")
             return
 
-        raw_posts.reverse() # مرتب‌سازی از قدیمی‌ترین به جدیدترین
-
-        # گروه‌بندی پیام‌هایی که به صورت آلبوم (چند عکس/ویدیو با هم) ارسال شده‌اند
-        grouped_posts = []
-        group_map = {}
-        for msg in raw_posts:
-            if msg.media_group_id:
-                if msg.media_group_id not in group_map:
-                    group_map[msg.media_group_id] = []
-                    grouped_posts.append(group_map[msg.media_group_id])
-                group_map[msg.media_group_id].append(msg)
-            else:
-                grouped_posts.append([msg])
+        # مرتب‌سازی کل پست‌ها از قدیمی‌ترین به جدیدترین (برای ارسال در ربات بله)
+        grouped_posts.reverse()
+        
+        # مرتب‌سازی فایل‌های داخل خود آلبوم‌ها (چون تلگرام پیام‌ها را از آخر به اول می‌دهد)
+        for group in grouped_posts:
+            group.reverse()
 
         await status_msg.edit_text(f"✅ تعداد `{len(grouped_posts)}` پست/آلبوم یافت شد. در حال آماده‌سازی و ارسال...", parse_mode="Markdown")
 
