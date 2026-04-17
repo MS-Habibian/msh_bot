@@ -10,9 +10,9 @@ START_MESSAGE = """
 🌐 **دانلود از وب:** دانلود فایل از لینک مستقیم با سرعت بالا
 📺 **یوتیوب:** جستجو و دانلود ویدیوها با کیفیت‌های مختلف
 📌 **پینترست:** جستجو و دانلود عکس و ویدیو از پینترست
-✈️ **تلگرام:** دریافت پست‌های کانال‌ها و تکه‌تکه کردن فایل‌های حجیم
-🔍 **گوگل:** جستجو در وب و دریافت نتایج
-🖼 **تصویر:** ابزارهای کاربردی برای کار با تصاویر
+💬 **تلگرام:** دریافت پست‌های کانال‌ها و تکه‌تکه کردن فایل‌های حجیم
+🔍 **گوگل:** جستجو در وب و دانلود صفحات نتایج به صورت فایل
+🐳 **داکر (Docker):** دریافت و دانلود ایمیج‌های داکر (Docker Images)
 
 👇 برای مشاهده راهنمای استفاده از هر بخش، روی دکمه زیر کلیک کن:
 """
@@ -41,39 +41,35 @@ HELP_TEXTS = {
         "🔹 *مثال:* `/pin nature wallpapers`"
     ),
     "help_tg": (
-        "✈️ *راهنمای دانلود از تلگرام*\n\n"
+        "💬 *راهنمای دانلود از تلگرام*\n\n"
         "با این دستور می‌توانید پست‌های اخیر یک کانال عمومی تلگرام را دریافت کنید. اگر فایلی بزرگتر از حجم مجاز باشد، قابلیت تکه‌تکه کردن (RAR) فعال می‌شود.\n\n"
         "🔸 *دستور:* `/tgposts <تعداد> @<آیدی_کانال>`\n"
         "🔹 *مثال:* `/tgposts 5 @varzesh3` (دریافت ۵ پست آخر)"
     ),
     "help_google": (
         "🔍 *راهنمای جستجوی گوگل*\n\n"
-        "می‌توانید مستقیماً از طریق ربات در گوگل جستجو کنید.\n\n"
+        "می‌توانید در گوگل جستجو کنید و علاوه بر مشاهده لینک نتایج، خود صفحات وب مربوط به هر نتیجه را نیز به صورت فایل دانلود کنید.\n\n"
         "🔸 *دستور:* `/google <عبارت جستجو>`\n"
         "🔹 *مثال:* `/google اخبار تکنولوژی`"
     ),
     "help_image": (
-        "🖼 *راهنمای تصویر*\n\n"
-        "ابزاری برای پردازش و کار با تصاویر.\n\n"
-        "🔸 *دستور:* `/image <پارامترها>`\n"
+        "🐳 *راهنمای ایمیج‌های داکر (Docker)*\n\n"
+        "این ابزار برای دریافت و دانلود ایمیج‌های داکر (Docker Images) کاربرد دارد.\n\n"
+        "🔸 *دستور:* `/image <نام ایمیج>`\n"
+        "🔹 *مثال:* `/image ubuntu:latest`\n"
         "_(برای جزئیات بیشتر دستور را بدون پارامتر ارسال کنید)_"
     )
 }
 
 def get_main_menu_keyboard():
+    # قرار دادن هر دکمه در یک لیست جداگانه باعث می‌شود دکمه‌ها زیر هم (تمام‌عرض) قرار بگیرند
     keyboard = [
-        [
-            InlineKeyboardButton("📺 یوتیوب", callback_data="help_yt"),
-            InlineKeyboardButton("🌐 دانلود مستقیم", callback_data="help_dl")
-        ],
-        [
-            InlineKeyboardButton("✈️ تلگرام", callback_data="help_tg"),
-            InlineKeyboardButton("📌 پینترست", callback_data="help_pin")
-        ],
-        [
-            InlineKeyboardButton("🖼 تصویر", callback_data="help_image"),
-            InlineKeyboardButton("🔍 گوگل", callback_data="help_google")
-        ]
+        [InlineKeyboardButton("📺 راهنمای یوتیوب", callback_data="help_yt")],
+        [InlineKeyboardButton("🌐 راهنمای دانلود مستقیم", callback_data="help_dl")],
+        [InlineKeyboardButton("💬 راهنمای تلگرام", callback_data="help_tg")],
+        [InlineKeyboardButton("📌 راهنمای پینترست", callback_data="help_pin")],
+        [InlineKeyboardButton("🐳 راهنمای داکر (Docker)", callback_data="help_image")],
+        [InlineKeyboardButton("🔍 راهنمای جستجوی گوگل", callback_data="help_google")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -94,14 +90,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # دستور /help هم مستقیماً منوی شیشه‌ای را باز می‌کند
+    # دستور /help مستقیماً منوی شیشه‌ای را باز می‌کند
     await update.message.reply_text(
         text="👇 *لطفاً برای مشاهده راهنما، یک بخش را انتخاب کنید:*",
         reply_markup=get_main_menu_keyboard(),
         parse_mode="Markdown"
     )
 
-# این تابع برای مدیریت کلیک روی دکمه‌های راهنما است
+# تابع مدیریت کلیک روی دکمه‌های راهنما
 async def help_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
