@@ -1,6 +1,6 @@
 import os
+import time
 import uuid
-import shutil
 from telegram import Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from handlers.downloader import cleanup_folder_job
@@ -13,14 +13,47 @@ async def delete_file_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         if os.path.exists(file_path):
             os.remove(file_path)
-            print(f"Deleted file: {file_path}")
     except Exception as e:
         print(f"Error deleting file {file_path}: {e}")
+
+# تابع پروگرس برای نمایش درصد پیشرفت دانلود از تلگرام
+async def download_progress(current, total, query, start_time_list, last_update_time_list):
+    now = time.time()
+    # آپدیت پیام هر 3 ثانیه یکبار برای جلوگیری از محدودیت‌های تلگرام
+    if now - last_update_time_list[0] > 3:
+        last_update_time_list[0] = now
+        percentage = current * 100 / total if total else 0
+        speed = current / (now - start_time_list[0]) if (now - start_time_list[0]) > 0 else 0
+        speed_mb = speed / (1024 * 1024)
+        
+        text = (f"⬇️ **در حال دانلود فایل بزرگ از تلگرام...**\n\n"
+                f"📈 پیشرفت: `{percentage:.1f}%`\n"
+                f"📥 مقدار دانلود شده: `{format_size(current)}` از `{format_size(total)}`\n"
+                f"🚀 سرعت: `{speed_mb:.2f} MB/s`")
+        
+        try:
+            await query.edit_message_text(text, parse_mode="Markdown")
+        except:
+            pass
+
+def get_media_info(post):
+    file_size, file_name = 0, ""
+    if post.document:
+        file_size, file_name = post.document.file_size, post.document.file_name or ""
+    elif post.video:
+        file_size, file_name = post.video.file_size, post.video.file_name or ""
+    elif post.audio:
+        file_size, file_name = post.audio.file_size, post.audio.file_name or ""
+    elif post.voice:
+        file_size = post.voice.file_size
+    elif post.photo:
+        file_size = post.photo.file_size
+    return file_size, file_name
 
 async def tgposts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     args = context.args
     if not args:
-        await update.message.reply_text("📌 *راهنمای استفاده:*\n`/tgposts @channelname`\n`/tgposts 5 @channelname`\n`/tgposts @channelname 10`\n(عدد بین ۱ تا ۲۰)", parse_mode="Markdown")
+        await update.message.reply_text("📌 *راهنمای استفاده:*\n`/tgposts @channelname`\n`/tgposts 5 @channelname`\n(عدد بین ۱ تا ۲۰)", parse_mode="Markdown")
         return
 
     limit = 20
@@ -37,7 +70,6 @@ async def tgposts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     limit = max(1, min(limit, 20))
-
     if not channel_username.startswith("@") and not channel_username.startswith("http"):
         channel_username = f"@{channel_username}"
 
@@ -67,94 +99,84 @@ async def tgposts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         for group in grouped_posts:
             group.reverse()
 
-        await status_msg.edit_text(f"✅ تعداد `{len(grouped_posts)}` پست/آلبوم یافت شد. در حال آماده‌سازی و ارسال...", parse_mode="Markdown")
-
+        await status_msg.edit_text(f"✅ تعداد `{len(grouped_posts)}` پست/آلبوم یافت شد. در حال پردازش...", parse_mode="Markdown")
         DELETE_DELAY = 5 * 3600 
 
         for post_idx, post_group in enumerate(grouped_posts, 1):
             try:
-                # ---------------- حالت اول: پیام تکی ----------------
-                if len(post_group) == 1:
-                    post = post_group[0]
+                # بررسی می‌کنیم آیا داخل آلبوم فایل بزرگی وجود دارد؟
+                large_files = []
+                normal_files = []
+                
+                for post in post_group:
+                    if post.media:
+                        file_size, file_name = get_media_info(post)
+                        is_apk = file_name.lower().endswith('.apk')
+                        if file_size > 19.5 * 1024 * 1024 or is_apk:
+                            large_files.append((post, file_size, is_apk))
+                        else:
+                            normal_files.append(post)
+                    else:
+                        normal_files.append(post)
+
+                # اول فایل‌های بزرگ (نیازمند تکه تکه شدن) را با دکمه ارسال می‌کنیم
+                for l_post, size, is_apk in large_files:
+                    reason = "فایل نصبی (APK) است" if is_apk else f"حجم فایل بزرگ است (`{format_size(size)}`)"
+                    keyboard = [[InlineKeyboardButton("📥 دانلود و تکه‌تکه کردن (RAR)", callback_data=f"dlrar:{channel_username}:{l_post.id}")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    text = f"⚠️ *پست {post_idx} (فایل حجیم آلبوم/تکی):* این {reason}.\nبرای دانلود روی دکمه زیر کلیک کنید:"
+                    msg_text = l_post.text or l_post.caption
+                    if msg_text:
+                        text += f"\n\n📝 کپشن:\n{msg_text}"
+                        
+                    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+
+                if not normal_files:
+                    continue
+
+                # پردازش فایل‌های کوچک و متن‌های معمولی
+                if len(normal_files) == 1:
+                    post = normal_files[0]
                     message_text = post.text or post.caption
                     
                     if post.media:
-                        # استخراج سایز و نام فایل بدون دانلود
-                        file_size = 0
-                        file_name = ""
-                        if post.document:
-                            file_size = post.document.file_size
-                            file_name = post.document.file_name or ""
-                        elif post.video:
-                            file_size = post.video.file_size
-                            file_name = post.video.file_name or ""
-                        elif post.audio:
-                            file_size = post.audio.file_size
-                            file_name = post.audio.file_name or ""
-                        elif post.voice:
-                            file_size = post.voice.file_size
-                        elif post.photo:
-                            file_size = post.photo.file_size
-
-                        is_apk = file_name.lower().endswith('.apk')
-
-                        # اگر فایل بزرگ است یا APK است، دکمه نشان بده و دانلود نکن
-                        if file_size > 19.5 * 1024 * 1024 or is_apk:
-                            reason = "فایل نصبی (APK) است" if is_apk else f"حجم فایل بزرگ است (`{format_size(file_size)}`)"
-                            keyboard = [[InlineKeyboardButton("📥 دانلود و تکه‌تکه کردن (RAR)", callback_data=f"dlrar:{channel_username}:{post.id}")]]
-                            reply_markup = InlineKeyboardMarkup(keyboard)
-                            
-                            text = f"⚠️ *پست {post_idx}:* این {reason}.\nبرای دانلود و فشرده‌سازی روی دکمه زیر کلیک کنید:"
-                            if message_text:
-                                text += f"\n\n📝 کپشن:\n{message_text}"
-                                
-                            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+                        progress_msg = await update.message.reply_text(f"⬇️ *پست {post_idx}:* در حال دانلود فایل کوچک...", parse_mode="Markdown")
+                        file_path = await tg_app.download_media(post)
                         
-                        # روال عادی برای فایل‌های کوچک
-                        else:
-                            progress_msg = await update.message.reply_text(f"⬇️ *پست {post_idx}:* در حال دانلود...", parse_mode="Markdown")
-                            file_path = await tg_app.download_media(post)
-                            caption = message_text if message_text else ""
-                            
-                            if not file_path:
-                                await progress_msg.edit_text(f"❌ خطا در دانلود مدیا برای پست {post_idx}.")
-                                continue
+                        if not file_path:
+                            await progress_msg.edit_text(f"❌ خطا در دانلود مدیا برای پست {post_idx}. (احتمالا مدیا قابل دانلود نیست)")
+                            continue
 
-                            await progress_msg.edit_text(f"☁️ *پست {post_idx}:* در حال آپلود در ربات...", parse_mode="Markdown")
-                            with open(file_path, 'rb') as f:
-                                if post.photo: await update.message.reply_photo(photo=f, caption=caption)
-                                elif post.video: await update.message.reply_video(video=f, caption=caption)
-                                elif post.document: await update.message.reply_document(document=f, caption=caption)
-                                elif post.audio or post.voice: await update.message.reply_audio(audio=f, caption=caption)
-                            
-                            context.job_queue.run_once(delete_file_job, DELETE_DELAY, data=file_path)
-                            await progress_msg.delete()
+                        await progress_msg.edit_text(f"☁️ *پست {post_idx}:* در حال آپلود...", parse_mode="Markdown")
+                        with open(file_path, 'rb') as f:
+                            if post.photo: await update.message.reply_photo(photo=f, caption=message_text)
+                            elif post.video: await update.message.reply_video(video=f, caption=message_text)
+                            elif post.document: await update.message.reply_document(document=f, caption=message_text)
+                            elif post.audio or post.voice: await update.message.reply_audio(audio=f, caption=message_text)
+                        
+                        context.job_queue.run_once(delete_file_job, DELETE_DELAY, data=file_path)
+                        await progress_msg.delete()
 
                     elif message_text:
-                        try:
-                            await update.message.reply_text(message_text)
-                        except Exception:
-                            await update.message.reply_text(f"⚠️ فرمت متفاوت:\n\n{message_text}")
-                    else:
-                        await update.message.reply_text(f"⚠️ *پست {post_idx}:* محتوای پشتیبانی نشده.", parse_mode="Markdown")
-
-                # ---------------- حالت دوم: آلبوم ----------------
-                else:
-                    progress_msg = await update.message.reply_text(f"⬇️ *پست {post_idx} (آلبوم با {len(post_group)} فایل):* در حال دانلود...", parse_mode="Markdown")
+                        await update.message.reply_text(message_text)
+                        
+                else: # ارسال به عنوان آلبوم برای فایل‌های کوچک باقیمانده
+                    progress_msg = await update.message.reply_text(f"⬇️ *پست {post_idx} (آلبوم با {len(normal_files)} فایل کوچک):* در حال دانلود...", parse_mode="Markdown")
                     
                     downloaded_paths = []
-                    album_caption = ""
-                    for m in post_group:
-                        if m.caption:
-                            album_caption = m.caption
-                            break
+                    album_caption = next((m.caption for m in normal_files if m.caption), "")
 
-                    for m in post_group:
-                        path = await tg_app.download_media(m)
-                        if path: downloaded_paths.append((m, path))
+                    for m in normal_files:
+                        if m.media:
+                            path = await tg_app.download_media(m)
+                            if path: downloaded_paths.append((m, path))
+
+                    if not downloaded_paths:
+                        await progress_msg.delete()
+                        continue
 
                     await progress_msg.edit_text(f"☁️ *پست {post_idx}:* در حال آپلود آلبوم...", parse_mode="Markdown")
-                    
                     media_group_to_send = []
                     open_files = []
 
@@ -172,12 +194,11 @@ async def tgposts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         try:
                             await update.message.reply_media_group(media=media_group_to_send, read_timeout=120, write_timeout=300)
                         except Exception as e:
-                            await update.message.reply_text(f"❌ خطا در ارسال آلبوم پست {post_idx}:\n`{e}`", parse_mode="Markdown")
+                            await update.message.reply_text(f"❌ خطا در ارسال آلبوم: `{e}`", parse_mode="Markdown")
                     
                     for f in open_files: f.close()
                     for _, path in downloaded_paths:
                         context.job_queue.run_once(delete_file_job, DELETE_DELAY, data=path)
-
                     await progress_msg.delete()
 
             except Exception as e:
@@ -205,14 +226,24 @@ async def handle_download_rar_button(update: Update, context: ContextTypes.DEFAU
     download_folder = os.path.join("downloads", file_id)
     os.makedirs(download_folder, exist_ok=True)
     
-    await query.edit_message_text("⬇️ در حال دانلود فایل بزرگ از تلگرام... (لطفاً صبور باشید)")
+    await query.edit_message_text("⬇️ در حال اتصال برای دانلود فایل بزرگ از تلگرام...")
     
     try:
         post = await tg_app.get_messages(channel_username, msg_id)
-        file_path = await tg_app.download_media(post, file_name=f"{download_folder}/")
+        
+        # زمان شروع برای محاسبه سرعت و درصد
+        start_time_list = [time.time()]
+        last_update_time_list = [time.time()]
+        
+        file_path = await tg_app.download_media(
+            post, 
+            file_name=f"{download_folder}/",
+            progress=download_progress,
+            progress_args=(query, start_time_list, last_update_time_list)
+        )
         
         if not file_path:
-            await query.edit_message_text("❌ خطا در دانلود فایل از تلگرام.")
+            await query.edit_message_text("❌ خطا در دانلود فایل از تلگرام (ممکن است مدیا قابل دانلود نباشد).")
             return
 
         await query.edit_message_text("✂️ دانلود تمام شد. در حال ساخت فایل‌های فشرده RAR...")
@@ -240,57 +271,50 @@ async def handle_download_rar_button(update: Update, context: ContextTypes.DEFAU
             parse_mode="Markdown"
         )
 
-        caption = post.text or post.caption or ""
-        
-        for i, part_path in enumerate(part_files):
-            part_caption = caption + (f"\n\n📦 بخش {i+1} از {len(part_files)}" if len(part_files) > 1 else "\n\n📦 فایل فشرده شده")
-            safe_filename = f"file_part{i+1}.rar"
-            try:
-                with open(part_path, "rb") as f:
-                    await context.bot.send_document(
-                        chat_id=query.message.chat_id, document=f, filename=safe_filename, caption=part_caption,
-                        read_timeout=120, write_timeout=300, connect_timeout=120
-                    )
-            except Exception as e:
-                await context.bot.send_message(
-                    chat_id=query.message.chat_id, 
-                    text=f"❌ آپلود خودکار بخش {i+1} ناموفق بود.\n`{e}`", 
-                    parse_mode="Markdown"
-                )
+        for i in range(len(part_files)):
+            await reupload_tg_part(file_id, i, update, context, from_button=False)
 
     except Exception as e:
-        await query.edit_message_text(f"❌ خطای پیش‌بینی نشده:\n`{e}`")
-        if os.path.exists(download_folder):
-            shutil.rmtree(download_folder)
+        await query.edit_message_text(f"❌ خطا در پردازش فایل:\n`{e}`", parse_mode="Markdown")
 
-async def handle_tg_reupload_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def reupload_tg_part(file_id: str, part_index: int, update: Update, context: ContextTypes.DEFAULT_TYPE, from_button: bool = True):
+    if from_button:
+        query = update.callback_query
+        await query.answer()
+        await query.edit_message_text(f"☁️ در حال ارسال مجدد بخش {part_index+1} ...")
+
+    download_folder = os.path.join("downloads", file_id)
+    if not os.path.exists(download_folder):
+        if from_button: await update.callback_query.edit_message_text("❌ پوشه فایل‌ها پیدا نشد.")
+        return
+
+    part_files = sorted([f for f in os.listdir(download_folder) if f.endswith(".rar")])
+    if part_index < 0 or part_index >= len(part_files):
+        if from_button: await update.callback_query.edit_message_text("❌ شماره بخش نامعتبر است.")
+        return
+
+    part_path = os.path.join(download_folder, part_files[part_index])
+    try:
+        with open(part_path, "rb") as f:
+            await update.effective_chat.send_document(f, filename=part_files[part_index], write_timeout=300)
+        if from_button:
+            await update.callback_query.edit_message_text(f"✅ بخش {part_index+1} با موفقیت ارسال شد.")
+    except Exception as e:
+        if from_button:
+            await update.callback_query.edit_message_text(f"❌ خطا در ارسال بخش:\n`{e}`", parse_mode="Markdown")
+
+
+async def handle_reupload_tg_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    data = query.data
+    _, file_id, part_str = data.split(":")
+    part_index = int(part_str)
+    await reupload_tg_part(file_id, part_index, update, context, from_button=True)
 
-    _, file_id, part_index_str = query.data.split(":")
-    part_index = int(part_index_str)
-    download_folder = os.path.join("downloads", file_id)
+def register_tgposts_handlers(app):
+    app.add_handler(("tgposts", tgposts_command))
+    app.add_handler(("dlrar", handle_download_rar_button))
+    app.add_handler(("reuptg", handle_reupload_tg_button))
 
-    if not os.path.exists(download_folder):
-        await query.message.reply_text("⚠️ این فایل منقضی شده و از سرور حذف شده است.")
-        return
-
-    files_in_dir = sorted([f for f in os.listdir(download_folder) if f.endswith('.rar')])
-    if part_index >= len(files_in_dir):
-        await query.message.reply_text("⚠️ در پیدا کردن این بخش از فایل خطایی رخ داد.")
-        return
-
-    part_filename = files_in_dir[part_index]
-    part_path = os.path.join(download_folder, part_filename)
-
-    msg = await query.message.reply_text(f"☁️ در حال آپلود مجدد بخش {part_index + 1}...")
-    try:
-        safe_filename = f"file_part{part_index+1}.rar"
-        with open(part_path, "rb") as f:
-            await query.message.reply_document(
-                document=f, filename=safe_filename, caption=f"🔄 تلاش مجدد دستی: بخش {part_index + 1}",
-                read_timeout=120, write_timeout=300, connect_timeout=120,
-            )
-        await msg.delete()
-    except Exception as e:
-        await msg.edit_text(f"❌ آپلود دوباره ناموفق بود: `{str(e)}`", parse_mode="Markdown")
+__all__ = ["tgposts_command", "handle_download_rar_button", "handle_reupload_tg_button", "register_tgposts_handlers"]
