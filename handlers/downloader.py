@@ -121,7 +121,10 @@ async def handle_reupload_callback(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     query = update.callback_query
-    await query.answer()  # کلیک روی دکمه را تأیید می‌کند
+    try:
+        await query.answer()
+    except:
+        pass # کلیک روی دکمه را تأیید می‌کند
 
     # callback_data را تجزیه می‌کند (مثلاً "reup:UUID:0")
     _, file_id, part_index_str = query.data.split(":")
