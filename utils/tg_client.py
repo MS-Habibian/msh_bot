@@ -1,4 +1,3 @@
-# utils/tg_client.py
 from pyrogram import Client
 from config import TG_API_ID, TG_API_HASH
 

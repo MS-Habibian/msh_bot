@@ -14,7 +14,7 @@ from telegram.ext import CommandHandler, CallbackQueryHandler
 from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command
 from handlers.pinterest import pin_command, pin_download_callback
 from telegram.ext import CommandHandler, CallbackQueryHandler
-from handlers.tgposts import tgposts_command
+from handlers.tgposts import handle_download_rar_button, handle_tg_reupload_callback, tgposts_command
 from utils.tg_client import tg_app # Import the Pyrogram ap
 
 # Setup logging
@@ -82,6 +82,8 @@ def main() -> None:
 
     application.add_handler(CommandHandler("tgposts", tgposts_command))
 
+    application.add_handler(CallbackQueryHandler(handle_download_rar_button, pattern="^dlrar:"))
+    application.add_handler(CallbackQueryHandler(handle_tg_reupload_callback, pattern="^reuptg:"))
 
 
 
