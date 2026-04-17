@@ -13,6 +13,8 @@ from handlers.image import image_command
 from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command
 from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
+from handlers.commands import start_command, help_command, help_callback_handler
+
 
 from utils.tg_client import tg_app # Import the Pyrogram ap
 
@@ -83,6 +85,9 @@ def main() -> None:
 
     application.add_handler(CallbackQueryHandler(handle_download_rar_button, pattern="^dlrar:"))
     application.add_handler(CallbackQueryHandler(handle_reupload_tg_button, pattern="^reuptg:"))
+
+    application.add_handler(CallbackQueryHandler(help_callback_handler, pattern="^help_"))
+
 
 
 
