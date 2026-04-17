@@ -21,9 +21,9 @@ async def dlp_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     keyboard = [
         [
-            InlineKeyboardButton("📄 PDF", callback_data=f"dlp:pdf:{url}"),
-            InlineKeyboardButton("🌐 MHTML", callback_data=f"dlp:mhtml:{url}"),
-            InlineKeyboardButton("🖼️ PNG", callback_data=f"dlp:png:{url}")
+            InlineKeyboardButton("PDF", callback_data=f"dlp:pdf:{url}"),
+            InlineKeyboardButton("MHTML", callback_data=f"dlp:mhtml:{url}"),
+            InlineKeyboardButton("PNG", callback_data=f"dlp:png:{url}")
         ]
     ]
     
