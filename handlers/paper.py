@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, Application
 
 # Define the Sci-Hub base URL (this changes occasionally, e.g., .se, .st, .ru)
-SCIHUB_BASE_URL = "https://sci-hub.se/"
+SCIHUB_BASE_URL = "https://sci-hub.su/"
 
 async def scholar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /scholar command."""
