@@ -188,9 +188,10 @@
 #         await status_msg.edit_text(f"❌ خطا: {str(e)}")
 import os
 import logging
+import aiohttp
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
-from utils.pinterest_helper import search_pinterest_rss
+from utils.pinterest_helper import load_cookies, search_pinterest_rss
 from utils.download_helper import download_file_async, split_file
 
 logger = logging.getLogger(__name__)
