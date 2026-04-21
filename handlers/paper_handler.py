@@ -135,12 +135,12 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     os.makedirs(download_dir, exist_ok=True)
     
     try:
-        file_path = os.path.join(download_dir, "paper.pdf")
-        # Download the file
-        await download_file_async(pdf_url, file_path)
+        # Pass the DIRECTORY (download_dir), not the file path. 
+        # The function will return the final path to the downloaded file.
+        downloaded_file = await download_file_async(pdf_url, download_dir)
         
-        # Split and send
-        parts = split_file(file_path)
+        # Split and send using the returned file path
+        parts = split_file(downloaded_file)
         for part in parts:
             with open(part, 'rb') as f:
                 await context.bot.send_document(chat_id=query.message.chat_id, document=f)
