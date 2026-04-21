@@ -12,7 +12,7 @@ from handlers.image import image_command
 # from handlers.instagram import instagram_command
 from handlers.paper_handler import paper_download_callback, paper_paginate_callback, paper_search_command
 from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command
-from handlers.pinterest import pin_command, pin_download_callback
+from handlers.pinterest import pin_command, pin_download_callback, pin_page_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
 from handlers.commands import start_command, help_command, help_callback_handler
 
@@ -70,6 +70,7 @@ def main() -> None:
     # پینترست
     application.add_handler(CommandHandler("pin", pin_command))
     application.add_handler(CallbackQueryHandler(pin_download_callback, pattern="^pindl_"))
+    application.add_handler(CallbackQueryHandler(pin_page_callback, pattern=r"^pin_page\|"))
 
     application.add_handler(CommandHandler("tgposts", tgposts_command))
     application.add_handler(CallbackQueryHandler(handle_download_rar_button, pattern="^dlrar:"))
