@@ -14,9 +14,9 @@ from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_do
 from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
 from handlers.commands import start_command, help_command, help_callback_handler
+
+# Import Scholar Handlers
 from handlers.scholar_handler import scholar_search_command, handle_scholar_download_callback
-
-
 
 from utils.tg_client import tg_app # Import the Pyrogram ap
 
@@ -50,12 +50,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
 
-    # Register URL Handler
-    # filters.Entity("url") ensures this ONLY triggers if the user sends a web link
-    # application.add_handler(MessageHandler(filters.Entity("url"), handle_url))
     application.add_handler(CommandHandler("dl", download_command))
-     # Add the handler for the inline keyboard buttons. 
-    # We filter for callback data starting with "reup:"
     application.add_handler(CallbackQueryHandler(handle_reupload_callback, pattern="^reup:"))
 
     application.add_handler(CommandHandler("google", google_command))
@@ -66,27 +61,17 @@ def main() -> None:
     application.add_handler(CommandHandler("image", image_command))
     application.add_handler(CallbackQueryHandler(dlp_callback, pattern="^dlp:"))
 
-
-    # application.add_handler(CommandHandler("ig", instagram_command))
-        
-
-    # ... your bot setup code ...
-
     # هندلر جستجوی یوتیوب
     application.add_handler(CommandHandler("yt", yt_command))
-    # هندلر جدید برای دانلود مستقیم با لینک
     application.add_handler(CommandHandler("ytdl", ytdl_command))
-
-    # هندلر کلیک روی نتایج
     application.add_handler(CallbackQueryHandler(handle_yt_download_callback, pattern="^ytdl:"))
     application.add_handler(CallbackQueryHandler(handle_yt_format_callback, pattern=r"^ytfmt:"))
 
-    #پینترست
+    # پینترست
     application.add_handler(CommandHandler("pin", pin_command))
     application.add_handler(CallbackQueryHandler(pin_download_callback, pattern="^pindl_"))
 
     application.add_handler(CommandHandler("tgposts", tgposts_command))
-
     application.add_handler(CallbackQueryHandler(handle_download_rar_button, pattern="^dlrar:"))
     application.add_handler(CallbackQueryHandler(handle_reupload_tg_button, pattern="^reuptg:"))
 
@@ -96,15 +81,9 @@ def main() -> None:
     application.add_handler(CommandHandler("scholar", scholar_search_command))
     application.add_handler(CallbackQueryHandler(handle_scholar_download_callback, pattern="^dl_"))
 
-
-
-
-
-
     # Start the bot
     print("Bot is starting with clean architecture...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
 
 if __name__ == "__main__":
     main()

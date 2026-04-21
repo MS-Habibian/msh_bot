@@ -1,54 +1,48 @@
+# utils/scholar_utils.py
 import requests
-from scholarly import scholarly
-import cloudscraper
-import urllib3
 
-# دیکشنری برای ذخیره نتایج کاربر
-# فرمت: { chat_id: [{'title': '...', 'eprint_url': '...'}, ...] }
+# دیکشنری برای ذخیره موقت نتایج جستجوی هر کاربر (برای دریافت لینک در مرحله دانلود)
 user_search_cache = {}
 
-def get_scholar_results(query, limit=10):
-    search_query = scholarly.search_pubs(query)
-    results = []
+def search_semantic_scholar(query, chat_id):
+    """
+    جستجوی مقاله با استفاده از Semantic Scholar API.
+    فقط مقالاتی که لینک مستقیم PDF (Open Access) دارند را در اولویت قرار می‌دهد.
+    """
+    url = "https://api.semanticscholar.org/graph/v1/paper/search"
+    params = {
+        'query': query,
+        'fields': 'title,authors,year,openAccessPdf',
+        'limit': 10
+    }
     
-    for i in range(limit):
-        try:
-            paper = next(search_query)
-            # استخراج اطلاعات لازم، از جمله eprint_url در صورت وجود
-            result_data = {
-                'title': paper.get('bib', {}).get('title', 'بدون عنوان'),
-                'author': paper.get('bib', {}).get('author', 'نویسنده نامشخص'),
-                'pub_year': paper.get('bib', {}).get('pub_year', 'سال نامشخص'),
-                'pub_url': paper.get('pub_url', ''),
-                'eprint_url': paper.get('eprint_url', None) # مهم: لینک مستقیم PDF
-            }
-            results.append(result_data)
-        except StopIteration:
-            break
-            
-    return results
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-def download_direct_pdf(pdf_url):
-    """دانلود مستقیم فایل با استفاده از cloudscraper"""
-    if not pdf_url:
-        return None
-        
     try:
-        scraper = cloudscraper.create_scraper()
-        
-        # مقدار verify=False را از اینجا حذف کردیم
-        response = scraper.get(pdf_url, timeout=30)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
+        data = response.json()
         
-        # بررسی اینکه آیا فایل واقعا PDF است
-        if response.content.startswith(b'%PDF'):
-            return response.content
-        else:
-            print(f"File is not a PDF. URL: {pdf_url}")
+        results = []
+        for index, item in enumerate(data.get('data', [])):
+            pdf_url = None
+            if item.get('openAccessPdf'):
+                pdf_url = item['openAccessPdf'].get('url')
             
+            # استخراج نام اولین نویسنده (برای نمایش خلاصه)
+            authors = item.get('authors', [])
+            author_name = authors[0]['name'] if authors else "Unknown"
+
+            results.append({
+                'id': index,
+                'title': item.get('title', 'بدون عنوان'),
+                'year': item.get('year', 'نامشخص'),
+                'author': author_name,
+                'pdf_url': pdf_url
+            })
+            
+        # ذخیره نتایج در کش برای این کاربر
+        user_search_cache[chat_id] = results
+        return results
+
     except Exception as e:
-        print(f"Error downloading direct PDF: {e}")
-        
-    return None
+        print(f"Error in Semantic Scholar API: {e}")
+        return []
