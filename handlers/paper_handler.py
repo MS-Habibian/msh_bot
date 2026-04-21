@@ -66,60 +66,80 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # Send the first 5 results
-    for res in results:
-        text = f"📚 *{res['title']}*\n👤 {res['authors']}\n📅 {res['year']}"
-        reply_markup = None
+    text = f"📚 *نتایج جستجو برای:* {query}\n\n"
+    download_buttons = []
+
+    for i, res in enumerate(results, 1):
+        text += f"*{i}. {res['title']}*\n"
+        text += f"👨‍🔬 {res['authors']} | 📅 {res['year']}\n\n"
+        
+        # اگر لینک دانلود داشت، دکمه شماره‌دار اضافه می‌شود
         if res['pdf_link']:
-            keyboard = [[InlineKeyboardButton("📥 دانلود PDF", callback_data=f"paper_pdf|{res['pdf_link'][-40:]}")]] # Truncated URL if needed, or implement ID mapping
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+            # به دلیل محدودیت ۶۴ بایتی تلگرام، ممکن است لینک نیاز به کوتاه‌سازی داشته باشد
+            download_buttons.append(
+                InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
+            )
 
-    # Send the Pagination button
-    keyboard = [[InlineKeyboardButton("⬇️ دریافت 5 مقاله بعدی", callback_data="scholar_page|2")]]
+    keyboard = []
+    if download_buttons:
+        keyboard.append(download_buttons) # ردیف اول: دکمه‌های دانلود (1 2 3 4 5)
+        
+    # ردیف دوم: دکمه صفحه بعد
+    keyboard.append([InlineKeyboardButton("⬇️ دریافت 5 مقاله بعدی", callback_data="scholar_page|2")])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("صفحه 1", reply_markup=reply_markup)
-
+    await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 # --- Add this NEW function for the Next button ---
 async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_call = update.callback_query
     await query_call.answer()
     
-    # Extract the requested page number
     _, page_str = query_call.data.split("|")
     page = int(page_str)
     
-    # Retrieve the original query from user_data
     query_text = context.user_data.get('scholar_query')
     if not query_text:
         await query_call.message.reply_text("جستجوی شما منقضی شده است. لطفا دوباره جستجو کنید.")
         return
 
-    # Remove the old "Next" button from the chat so it doesn't clutter
+    # حذف دکمه‌های پیام قبلی برای جلوگیری از شلوغی
     await query_call.edit_message_reply_markup(reply_markup=None)
-    await context.bot.send_message(chat_id=query_call.message.chat_id, text=f"در حال بارگذاری صفحه {page}...")
+    
+    status_msg = await context.bot.send_message(
+        chat_id=query_call.message.chat_id, 
+        text=f"در حال بارگذاری صفحه {page}..."
+    )
 
     results = search_openalex(query_text, page=page)
     
     if not results:
-        await context.bot.send_message(chat_id=query_call.message.chat_id, text="مقاله بیشتری یافت نشد.")
+        await status_msg.edit_text("مقاله بیشتری یافت نشد.")
         return
 
-    # Send the new results
-    for res in results:
-        text = f"📚 *{res['title']}*\n👤 {res['authors']}\n📅 {res['year']}"
-        reply_markup = None
-        if res['pdf_link']:
-            # CAUTION: PDF URLs might exceed 64 bytes in callback_data
-            keyboard = [[InlineKeyboardButton("📥 دانلود PDF", callback_data=f"paper_pdf|{res['pdf_link'][:50]}")]] 
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-        await context.bot.send_message(chat_id=query_call.message.chat_id, text=text, parse_mode='Markdown', reply_markup=reply_markup)
+    # محاسبه شماره شروع برای این صفحه (مثلاً صفحه 2 از شماره 6 شروع می‌شود)
+    start_num = (page - 1) * 5 + 1
+    
+    text = f"📚 *نتایج صفحه {page} برای:* {query_text}\n\n"
+    download_buttons = []
 
-    # Send a new Pagination button for the next page
-    keyboard = [[InlineKeyboardButton("⬇️ دریافت 5 مقاله بعدی", callback_data=f"scholar_page|{page+1}")]]
+    for i, res in enumerate(results, start_num):
+        text += f"*{i}. {res['title']}*\n"
+        text += f"👨‍🔬 {res['authors']} | 📅 {res['year']}\n\n"
+        
+        if res['pdf_link']:
+            download_buttons.append(
+                InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
+            )
+
+    keyboard = []
+    if download_buttons:
+        keyboard.append(download_buttons)
+        
+    # دکمه صفحه بعدی (مثلاً رفتن به صفحه 3)
+    keyboard.append([InlineKeyboardButton("⬇️ دریافت 5 مقاله بعدی", callback_data=f"scholar_page|{page+1}")])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=query_call.message.chat_id, text=f"صفحه {page}", reply_markup=reply_markup)
+    await status_msg.edit_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 
 async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
