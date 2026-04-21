@@ -10,7 +10,7 @@ from handlers.downloader import download_command, handle_reupload_callback
 from handlers.google import google_command
 from handlers.image import image_command
 # from handlers.instagram import instagram_command
-from handlers.paper_handler import paper_download_callback, paper_search_command
+from handlers.paper_handler import paper_download_callback, paper_paginate_callback, paper_search_command
 from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command
 from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
@@ -80,6 +80,7 @@ def main() -> None:
     # Scholar handlers
     application.add_handler(CommandHandler("scholar", paper_search_command))
     application.add_handler(CallbackQueryHandler(paper_download_callback, pattern=r"^paper_pdf\|"))
+    application.add_handler(CallbackQueryHandler(paper_paginate_callback, pattern=r"^scholar_page\|"))
     # application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
 
 
