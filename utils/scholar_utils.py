@@ -1,5 +1,7 @@
 import requests
 from scholarly import scholarly
+import cloudscraper
+import urllib3
 
 # دیکشنری برای ذخیره نتایج کاربر
 # فرمت: { chat_id: [{'title': '...', 'eprint_url': '...'}, ...] }
@@ -26,31 +28,27 @@ def get_scholar_results(query, limit=10):
             
     return results
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 def download_direct_pdf(pdf_url):
-    """دانلود مستقیم فایل از لینک eprint_url"""
+    """دانلود مستقیم فایل با استفاده از cloudscraper برای دور زدن محدودیت‌ها"""
     if not pdf_url:
         return None
         
     try:
-        # هدرهای کامل‌تر برای شبیه‌سازی مرورگر واقعی
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://scholar.google.com/',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        }
+        # ایجاد یک اسکرپر برای عبور از Cloudflare و سیستم‌های ضد ربات
+        scraper = cloudscraper.create_scraper()
         
-        response = requests.get(pdf_url, headers=headers, timeout=20, verify=False)
+        response = scraper.get(pdf_url, timeout=30, verify=False)
         response.raise_for_status()
         
         # بررسی اینکه آیا فایل واقعا PDF است
         if response.content.startswith(b'%PDF'):
             return response.content
+        else:
+            print(f"File is not a PDF. URL: {pdf_url}")
             
     except Exception as e:
-        print(f"Error downloading direct PDF: {e}")
+        print(f"Error downloading direct PDF (Cloudscraper): {e}")
         
     return None
