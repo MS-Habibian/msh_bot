@@ -60,6 +60,7 @@ def search_openalex(query: str, page: int = 1, per_page: int = 5) -> list:
         
         results = []
         for work in data.get('results', []):
+            print('this is result:\n', work)
             title = work.get('title', 'بدون عنوان')
             year = work.get('publication_year', 'نامشخص')
             citation = work.get('cited_by_count', 0), 
