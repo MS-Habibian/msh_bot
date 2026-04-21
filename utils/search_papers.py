@@ -62,6 +62,8 @@ def search_openalex(query: str, page: int = 1, per_page: int = 5) -> list:
         for work in data.get('results', []):
             title = work.get('title', 'بدون عنوان')
             year = work.get('publication_year', 'نامشخص')
+            citation = work.get('cited_by_count', 0), 
+            journal = work.get('primary_location', {}).get('source', {}).get('display_name') if work.get('primary_location') and work.get('primary_location').get('source') else 'نامشخص'
             
             # Extract authors
             authorships = work.get('authorships', [])
@@ -80,7 +82,9 @@ def search_openalex(query: str, page: int = 1, per_page: int = 5) -> list:
                 'title': title,
                 'authors': author_str,
                 'year': year,
-                'pdf_link': pdf_link
+                'pdf_link': pdf_link,
+                'journal': journal,
+                'citation': citation,
             })
         return results
     except Exception as e:

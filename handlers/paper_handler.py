@@ -72,7 +72,12 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
     for i, res in enumerate(results, 1):
         text += f"*{i}. {res['title']}*\n"
         text += f"👤 نویسندگان: {res['authors']}\n"
-        text += f"📅 سال: {res['year']}\n"
+        
+        # اضافه کردن ژورنال و سال و تعداد ارجاعات
+        journal = res.get('journal', 'نامشخص')
+        citations = res.get('citations', 0)
+        text += f"📖 ژورنال: {journal}\n"
+        text += f"📅 سال: {res['year']} | 📊 تعداد ارجاعات: {citations}\n"
         
         if res.get('pdf_link'):
             text += "✅ فایل PDF موجود است\n\n"
