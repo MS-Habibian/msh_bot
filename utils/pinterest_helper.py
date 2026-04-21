@@ -17,7 +17,7 @@ def load_cookies(cookie_file: str) -> dict:
     print(f"[Pinterest] Loaded {len(cookies)} cookies")
     return cookies
 
-async def search_pinterest_rss(query: str, limit: int = 10) -> List[Dict]:
+async def search_pinterest_rss(query: str, limit: int = 60) -> List[Dict]:
     clean_query = query.replace('/pin', '').strip()
     encoded_query = urllib.parse.quote(clean_query)
     
