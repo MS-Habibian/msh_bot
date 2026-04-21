@@ -71,20 +71,21 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     for i, res in enumerate(results, 1):
         text += f"*{i}. {res['title']}*\n"
-        text += f"👨‍🔬 {res['authors']} | 📅 {res['year']}\n\n"
+        text += f"👤 نویسندگان: {res['authors']}\n"
+        text += f"📅 سال: {res['year']}\n"
         
-        # اگر لینک دانلود داشت، دکمه شماره‌دار اضافه می‌شود
-        if res['pdf_link']:
-            # به دلیل محدودیت ۶۴ بایتی تلگرام، ممکن است لینک نیاز به کوتاه‌سازی داشته باشد
+        if res.get('pdf_link'):
+            text += "✅ فایل PDF موجود است\n\n"
             download_buttons.append(
                 InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
             )
+        else:
+            text += "❌ فایل PDF موجود نیست\n\n"
 
     keyboard = []
     if download_buttons:
-        keyboard.append(download_buttons) # ردیف اول: دکمه‌های دانلود (1 2 3 4 5)
+        keyboard.append(download_buttons)
         
-    # ردیف دوم: دکمه صفحه بعد
     keyboard.append([InlineKeyboardButton("⬇️ دریافت 5 مقاله بعدی", callback_data="scholar_page|2")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -102,40 +103,49 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
         await query_call.message.reply_text("جستجوی شما منقضی شده است. لطفا دوباره جستجو کنید.")
         return
 
-    # حذف دکمه‌های پیام قبلی برای جلوگیری از شلوغی
-    await query_call.edit_message_reply_markup(reply_markup=None)
+    # حفظ دکمه‌های دانلود پیام قبلی و حذف فقط دکمه "صفحه بعدی"
+    if query_call.message.reply_markup:
+        old_keyboard = query_call.message.reply_markup.inline_keyboard
+        new_old_keyboard = []
+        for row in old_keyboard:
+            # فقط دکمه‌هایی که مربوط به صفحه بعد نیستند را نگه می‌داریم
+            clean_row = [btn for btn in row if not (btn.callback_data and btn.callback_data.startswith("scholar_page"))]
+            if clean_row:
+                new_old_keyboard.append(clean_row)
+        await query_call.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(new_old_keyboard))
     
     status_msg = await context.bot.send_message(
         chat_id=query_call.message.chat_id, 
         text=f"در حال بارگذاری صفحه {page}..."
     )
 
-    results = search_openalex(query_text, page=page)
+    results = search_openalex(query_text, page=page) # فرض بر این است که این تابع از قبل ایمپورت شده
     
     if not results:
         await status_msg.edit_text("مقاله بیشتری یافت نشد.")
         return
 
-    # محاسبه شماره شروع برای این صفحه (مثلاً صفحه 2 از شماره 6 شروع می‌شود)
     start_num = (page - 1) * 5 + 1
-    
     text = f"📚 *نتایج صفحه {page} برای:* {query_text}\n\n"
     download_buttons = []
 
     for i, res in enumerate(results, start_num):
         text += f"*{i}. {res['title']}*\n"
-        text += f"👨‍🔬 {res['authors']} | 📅 {res['year']}\n\n"
+        text += f"👤 نویسندگان: {res['authors']}\n"
+        text += f"📅 سال: {res['year']}\n"
         
-        if res['pdf_link']:
+        if res.get('pdf_link'):
+            text += "✅ فایل PDF موجود است\n\n"
             download_buttons.append(
                 InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
             )
+        else:
+            text += "❌ فایل PDF موجود نیست\n\n"
 
     keyboard = []
     if download_buttons:
         keyboard.append(download_buttons)
         
-    # دکمه صفحه بعدی (مثلاً رفتن به صفحه 3)
     keyboard.append([InlineKeyboardButton("⬇️ دریافت 5 مقاله بعدی", callback_data=f"scholar_page|{page+1}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
