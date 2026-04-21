@@ -1,13 +1,11 @@
 import requests
-from utils.google_scraper import search_google
-from utils.pdf_extractor import extract_pdf_urls
+import time
 
 user_search_cache = {}
 
-def search_semantic_scholar(query, chat_id):
+def search_semantic_scholar(query, chat_id, retry_count=0):
     """
-    Search Semantic Scholar API for papers.
-    Returns list of results with pdf_url if available.
+    Search Semantic Scholar API for papers with rate limit handling.
     """
     try:
         url = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -18,6 +16,18 @@ def search_semantic_scholar(query, chat_id):
         }
         
         response = requests.get(url, params=params, timeout=15)
+        
+        # Handle rate limiting
+        if response.status_code == 429:
+            if retry_count < 2:
+                wait_time = 3 * (retry_count + 1)
+                print(f"Rate limited. Waiting {wait_time}s...")
+                time.sleep(wait_time)
+                return search_semantic_scholar(query, chat_id, retry_count + 1)
+            else:
+                print("Rate limit exceeded, falling back to Google")
+                return []
+        
         response.raise_for_status()
         data = response.json()
         
@@ -43,57 +53,73 @@ def search_semantic_scholar(query, chat_id):
         
         user_search_cache[chat_id] = results
         return results
+        
     except Exception as e:
-        print(f"Semantic Scholar error: {e}")
+        print(f"Error in Semantic Scholar API: {e}")
         return []
 
 
 def search_papers_via_google(query, chat_id):
     """
-    Search papers using Google Search with 'filetype:pdf' query.
-    Extracts PDF URLs from results.
-    Returns list of results with pdf_url.
+    Fallback: Search papers using Google with filetype:pdf.
     """
     try:
-        # Add filetype:pdf to query
+        from bs4 import BeautifulSoup
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
         google_query = f'"{query}" filetype:pdf'
-        search_results = search_google(google_query, num_results=10)
+        search_url = f"https://www.google.com/search?q={requests.utils.quote(google_query)}&num=10"
         
-        if not search_results:
-            return []
+        response = requests.get(search_url, headers=headers, timeout=10)
+        response.raise_for_status()
         
-        # Extract PDF URLs
-        pdf_urls = extract_pdf_urls(search_results)
-        
-        # Build results
+        soup = BeautifulSoup(response.text, 'html.parser')
         results = []
-        for idx, result in enumerate(search_results[:len(pdf_urls) if pdf_urls else 5]):
-            pdf_url = pdf_urls[idx] if idx < len(pdf_urls) else None
+        
+        for idx, g in enumerate(soup.find_all('div', class_='g')[:10]):
+            title_elem = g.find('h3')
+            link_elem = g.find('a')
             
-            results.append({
-                'id': idx,
-                'title': result.get('title', 'Unknown'),
-                'author': 'Unknown',  # Google doesn't provide author
-                'year': 'N/A',
-                'pdf_url': pdf_url,
-                'source': 'Google Search'
-            })
+            if title_elem and link_elem:
+                title = title_elem.get_text()
+                link = link_elem.get('href')
+                
+                if link and link.startswith('http'):
+                    # Check if it's a direct PDF
+                    pdf_url = None
+                    if link.lower().endswith('.pdf'):
+                        pdf_url = link
+                    elif 'arxiv.org' in link and '/abs/' in link:
+                        pdf_url = link.replace('/abs/', '/pdf/') + '.pdf'
+                    elif 'arxiv.org' in link and '/pdf/' in link:
+                        pdf_url = link
+                    
+                    results.append({
+                        'id': idx,
+                        'title': title,
+                        'author': 'Unknown',
+                        'year': 'N/A',
+                        'pdf_url': pdf_url
+                    })
         
         user_search_cache[chat_id] = results
         return results
+        
     except Exception as e:
-        print(f"Google search error: {e}")
+        print(f"Error in Google search: {e}")
         return []
 
 
 def search_papers_combined(query, chat_id):
     """
-    Combined search: try Semantic Scholar first, fallback to Google Search.
+    Try Semantic Scholar first, fallback to Google if rate limited or no PDFs.
     """
-    # Try Semantic Scholar first
     results = search_semantic_scholar(query, chat_id)
     
-    # If no PDFs found, try Google
+    # Fallback to Google if no results or no PDFs
     has_pdf = any(r.get('pdf_url') for r in results)
     if not has_pdf or not results:
         google_results = search_papers_via_google(query, chat_id)
