@@ -31,15 +31,15 @@ def get_scholar_results(query, limit=10):
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def download_direct_pdf(pdf_url):
-    """دانلود مستقیم فایل با استفاده از cloudscraper برای دور زدن محدودیت‌ها"""
+    """دانلود مستقیم فایل با استفاده از cloudscraper"""
     if not pdf_url:
         return None
         
     try:
-        # ایجاد یک اسکرپر برای عبور از Cloudflare و سیستم‌های ضد ربات
         scraper = cloudscraper.create_scraper()
         
-        response = scraper.get(pdf_url, timeout=30, verify=False)
+        # مقدار verify=False را از اینجا حذف کردیم
+        response = scraper.get(pdf_url, timeout=30)
         response.raise_for_status()
         
         # بررسی اینکه آیا فایل واقعا PDF است
@@ -49,6 +49,6 @@ def download_direct_pdf(pdf_url):
             print(f"File is not a PDF. URL: {pdf_url}")
             
     except Exception as e:
-        print(f"Error downloading direct PDF (Cloudscraper): {e}")
+        print(f"Error downloading direct PDF: {e}")
         
     return None
