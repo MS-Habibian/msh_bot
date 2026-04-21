@@ -79,7 +79,8 @@ def main() -> None:
 
     # Scholar handlers
     application.add_handler(CommandHandler("scholar", paper_search_command))
-    application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
+    application.add_handler(CallbackQueryHandler(paper_download_callback, pattern=r"^paper_pdf\|"))
+    # application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
 
 
 
