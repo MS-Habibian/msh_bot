@@ -7,7 +7,11 @@ def search_arxiv(query: str, max_results: int = 5) -> list:
     safe_query = urllib.parse.quote(query)
     url = f'http://export.arxiv.org/api/query?search_query=all:{safe_query}&start=0&max_results={max_results}'
     
-    response = urllib.request.urlopen(url).read()
+    try:
+      response = urllib.request.urlopen(url, timeout=10).read()
+    except Exception as e:
+      print(f"ArXiv search error: {e}")
+      return [] # Return empty list if it times out or fails
     root = ET.fromstring(response)
     ns = {'arxiv': 'http://www.w3.org/2005/Atom'}
     
