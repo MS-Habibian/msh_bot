@@ -1,128 +1,161 @@
-# handlers/scholar_handler.py
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
+from utils.scholar_utils import search_papers_combined, user_search_cache
+from utils.download_helper import download_file_async, split_file
 import os
 import uuid
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+import shutil
 
-# ایمپورت توابع از utils
-from utils.scholar_utils import search_semantic_scholar, user_search_cache
-from utils.download_helper import download_file_async, format_size, split_file
-
-# ایمپورت جاب پاکسازی از دانلودر (با فرض وجود این تابع در downloader.py شما)
-from handlers.downloader import cleanup_folder_job
-
-async def scholar_search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندلر دستور /scholar برای جستجوی مقاله"""
+async def scholar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /scholar <query> - Search for academic papers
+    """
     chat_id = update.effective_chat.id
-    query = " ".join(context.args)
     
-    if not query:
-        await update.message.reply_text("لطفاً عنوان مقاله یا کلمات کلیدی را بعد از دستور وارد کنید.\nمثال:\n/scholar attention is all you need")
+    if not context.args:
+        await update.message.reply_text(
+            "لطفاً عنوان یا کلمات کلیدی مقاله را وارد کنید.\n"
+            "مثال: /scholar attention is all you need"
+        )
         return
-
-    loading_msg = await update.message.reply_text("🔍 در حال جستجوی مقاله در Semantic Scholar...")
     
-    results = search_semantic_scholar(query, chat_id)
+    query = ' '.join(context.args)
+    loading_msg = await update.message.reply_text("🔍 در حال جستجو...")
+    
+    # Use combined search (Semantic Scholar + Google fallback)
+    results = search_papers_combined(query, chat_id)
     
     if not results:
-        await loading_msg.edit_text("❌ مقاله‌ای یافت نشد یا خطایی در ارتباط با سرور رخ داد.")
+        await loading_msg.edit_text("❌ هیچ نتیجه‌ای یافت نشد.")
         return
-
-    # ساخت پیام و دکمه‌های شیشه‌ای
-    text = "📚 **نتایج جستجو:**\n\n"
+    
+    # Format results
+    message = f"📚 نتایج جستجو برای: {query}\n\n"
     keyboard = []
-    row = []
     
     for item in results:
-        has_pdf = "✅ (PDF دارد)" if item['pdf_url'] else "❌ (فقط چکیده)"
-        text += f"{item['id'] + 1}. **{item['title']}**\n👤 {item['author']} ({item['year']}) - {has_pdf}\n\n"
+        title = item['title']
+        author = item['author']
+        year = item['year']
+        pdf_available = "✅ PDF موجود" if item['pdf_url'] else "❌ PDF ناموجود"
+        source = item.get('source', 'Semantic Scholar')
         
-        # فقط برای مقالاتی که PDF دارند دکمه دانلود می‌گذاریم
+        message += f"📄 {title}\n"
+        message += f"👤 {author} ({year})\n"
+        message += f"📥 {pdf_available}\n"
+        message += f"🔗 منبع: {source}\n\n"
+        
+        # Add download button only if PDF exists
         if item['pdf_url']:
-            row.append(InlineKeyboardButton(str(item['id'] + 1), callback_data=f"dl_{item['id']}"))
-        
-        if len(row) == 5:
-            keyboard.append(row)
-            row = []
-            
-    if row:
-        keyboard.append(row)
-
-    reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"دانلود: {title[:30]}...",
+                    callback_data=f"dl_{item['id']}"
+                )
+            ])
     
-    if not keyboard:
-        text += "\n⚠️ متاسفانه هیچکدام از مقالات لینک مستقیم رایگان (Open Access) نداشتند."
-
-    await loading_msg.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+    await loading_msg.edit_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None
+    )
 
 
 async def handle_scholar_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندلر کلیک روی دکمه‌های دانلود مقاله"""
+    """
+    Handle paper download button clicks
+    """
     query = update.callback_query
     await query.answer()
     
-    chat_id = query.message.chat_id
-    try:
-        article_index = int(query.data.split("_")[1])
-    except ValueError:
+    chat_id = update.effective_chat.id
+    paper_id = int(query.data.split('_')[1])
+    
+    # Get cached results
+    if chat_id not in user_search_cache:
+        await query.edit_message_text("❌ نتایج منقضی شده. لطفاً دوباره جستجو کنید.")
         return
-
-    # دریافت اطلاعات مقاله از کش
-    user_results = user_search_cache.get(chat_id, [])
-    if not user_results or article_index >= len(user_results):
-        await query.message.reply_text("❌ نشست شما منقضی شده است. لطفاً دوباره جستجو کنید.")
+    
+    results = user_search_cache[chat_id]
+    if paper_id >= len(results):
+        await query.edit_message_text("❌ مقاله یافت نشد.")
         return
-        
-    article = user_results[article_index]
-    pdf_url = article.get('pdf_url')
+    
+    paper = results[paper_id]
+    pdf_url = paper.get('pdf_url')
     
     if not pdf_url:
-        await query.message.reply_text("❌ لینک مستقیم PDF برای این مقاله موجود نیست.")
+        await query.edit_message_text("❌ لینک PDF موجود نیست.")
         return
-
-    # ساخت پوشه موقت برای دانلود
-    unique_id = str(uuid.uuid4())
-    download_folder = os.path.join("downloads", unique_id)
+    
+    # Create temp download folder
+    download_folder = f"downloads/{uuid.uuid4()}"
     os.makedirs(download_folder, exist_ok=True)
     
-    progress_message = await query.message.reply_text("⬇️ در حال دانلود مقاله...")
-
-    # تابع آپدیت پیشرفت برای پاس دادن به download_helper
-    async def update_progress(downloaded, total):
+    progress_msg = await query.edit_message_text(
+        f"📥 در حال دانلود: {paper['title'][:50]}...\n⏳ 0%"
+    )
+    
+    async def update_progress(current, total):
+        percent = int((current / total) * 100) if total > 0 else 0
         try:
-            percent = (downloaded / total) * 100 if total else 0
-            text = f"⬇️ *در حال دانلود مقاله...*\nپیشرفت: {percent:.1f}%\nحجم: {format_size(downloaded)} / {format_size(total)}"
-            # برای جلوگیری از اسپم شدن API بله/تلگرام، می‌توانید شرط زمان اضافه کنید
-            await progress_message.edit_text(text, parse_mode="Markdown")
+            await progress_msg.edit_text(
+                f"📥 در حال دانلود: {paper['title'][:50]}...\n⏳ {percent}%"
+            )
         except:
             pass
-
+    
     try:
-        # استفاده از تابع دانلود اصلی شما
+        # Download PDF
         filepath = await download_file_async(pdf_url, download_folder, progress_callback=update_progress)
         
-        # استفاده از تابع برش فایل در صورت نیاز
-        part_files = split_file(filepath)
+        if not filepath or not os.path.exists(filepath):
+            await progress_msg.edit_text("❌ دانلود ناموفق بود.")
+            shutil.rmtree(download_folder, ignore_errors=True)
+            return
         
-        await progress_message.edit_text("📤 در حال آپلود فایل...")
+        # Split file if needed
+        parts = split_file(filepath)
         
-        for part in part_files:
-            with open(part, 'rb') as f:
-                await context.bot.send_document(
-                    chat_id=chat_id, 
-                    document=f,
-                    caption=f"📄 {article['title']}"
-                )
-                
-        await progress_message.delete()
-
-    except Exception as e:
-        await progress_message.edit_text(f"❌ خطا در دانلود یا آپلود مقاله:\n{str(e)}")
-    finally:
-        # اجرای جاب پاکسازی پوشه (۵ ساعت بعد)
+        # Schedule cleanup
         context.job_queue.run_once(
-            cleanup_folder_job, 
-            5 * 3600, 
-            data=download_folder, 
-            name=f"cleanup_{unique_id}"
+            cleanup_folder_job,
+            5 * 3600,
+            data=download_folder
         )
+        
+        # Upload parts
+        for idx, part_path in enumerate(parts):
+            file_id = str(uuid.uuid4())
+            keyboard = [[
+                InlineKeyboardButton("🔄 آپلود مجدد", callback_data=f"reup:{file_id}:{idx}")
+            ]]
+            
+            with open(part_path, 'rb') as f:
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=f,
+                    filename=os.path.basename(part_path),
+                    caption=f"📄 {paper['title']}\nقسمت {idx + 1}/{len(parts)}",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+        
+        await progress_msg.delete()
+        
+    except Exception as e:
+        await progress_msg.edit_text(f"❌ خطا: {str(e)}")
+        shutil.rmtree(download_folder, ignore_errors=True)
+
+
+def cleanup_folder_job(context):
+    """Delete download folder after timeout"""
+    folder = context.job.data
+    if os.path.exists(folder):
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+# Handlers to register in main.py
+scholar_handler = CommandHandler('scholar', scholar_command)
+scholar_download_handler = CallbackQueryHandler(
+    handle_scholar_download_callback,
+    pattern=r'^dl_\d+$'
+)

@@ -3,6 +3,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from config import BOT_TOKEN
+from handlers import scholar_handler
 from handlers.commands import start_command, help_command
 from handlers.dlp import dlp_callback, dlp_command
 from handlers.dlp2 import dlp2_command
@@ -16,7 +17,7 @@ from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_butt
 from handlers.commands import start_command, help_command, help_callback_handler
 
 # Import Scholar Handlers
-from handlers.scholar_handler import scholar_search_command, handle_scholar_download_callback
+from handlers.scholar_handler import scholar_handler, scholar_download_handler
 
 from utils.tg_client import tg_app # Import the Pyrogram ap
 
@@ -78,8 +79,8 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(help_callback_handler, pattern="^help_"))
 
     # Scholar handlers
-    application.add_handler(CommandHandler("scholar", scholar_search_command))
-    application.add_handler(CallbackQueryHandler(handle_scholar_download_callback, pattern="^dl_"))
+    application.add_handler(scholar_handler)
+    application.add_handler(scholar_download_handler)
 
     # Start the bot
     print("Bot is starting with clean architecture...")
