@@ -3,7 +3,6 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from config import BOT_TOKEN
-from handlers import paper_handler
 from handlers.commands import start_command, help_command
 from handlers.dlp import dlp_callback, dlp_command
 from handlers.dlp2 import dlp2_command
@@ -12,7 +11,6 @@ from handlers.google import google_command
 from handlers.image import image_command
 # from handlers.instagram import instagram_command
 from handlers.paper_handler import paper_download_callback, paper_search_command
-from handlers.scholar_handler import scholar_download_callback, scholar_search_command
 from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command
 from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
@@ -80,10 +78,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(help_callback_handler, pattern="^help_"))
 
     # Scholar handlers
-    # application.add_handler(CommandHandler("scholar", paper_search_command))
-    # application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
-    application.add_handler(CommandHandler("scholar", scholar_search_command))
-    application.add_handler(CallbackQueryHandler(scholar_download_callback, pattern=r"^schdl\|"))
+    application.add_handler(CommandHandler("scholar", paper_search_command))
+    application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
+
 
 
     # Start the bot

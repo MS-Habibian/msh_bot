@@ -47,44 +47,6 @@ def search_arxiv(query: str, max_results: int = 5) -> list:
 
 
 
-def search_semantic_scholar(query: str, max_results: int = 5):
-    """
-    Searches Semantic Scholar and returns a list of papers.
-    Requested fields: paperId, title, authors, year, openAccessPdf
-    """
-    base_url = "https://api.semanticscholar.org/graph/v1/paper/search"
-    params = {
-        "query": query,
-        "limit": max_results,
-        "fields": "paperId,title,authors,year,openAccessPdf"
-    }
-    url = f"{base_url}?{urllib.parse.urlencode(params)}"
-    
-    try:
-        # Adding a User-Agent is good practice to prevent getting blocked by the API
-        req = urllib.request.Request(url, headers={'User-Agent': 'TelegramBot/1.0'})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-            papers = data.get('data', [])
-            
-            # Format authors for readability
-            for paper in papers:
-                authors_list = paper.get('authors', [])
-                if authors_list:
-                    names = [a['name'] for a in authors_list]
-                    if len(names) > 3:
-                        paper['formatted_authors'] = f"{', '.join(names[:3])} et al."
-                    else:
-                        paper['formatted_authors'] = ", ".join(names)
-                else:
-                    paper['formatted_authors'] = "Unknown Authors"
-                    
-            return papers
-            
-    except Exception as e:
-        print(f"Semantic Scholar API Error: {e}")
-        return []
-
 def get_paper_pdf_url(paper_id: str):
     """Fetches the direct PDF URL for a specific paperId if it exists."""
     url = f"https://api.semanticscholar.org/graph/v1/paper/{paper_id}?fields=openAccessPdf"
