@@ -182,12 +182,20 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     mirrors = ["https://sci-hub.se", "https://sci-hub.ru", "https://sci-hub.st"]
     response = None
     successful_mirror = None
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+    }
 
     for mirror in mirrors:
         url = f"{mirror}/{doi}"
         print(f"[*] Requesting Sci-Hub: {url}")
         try:
-            response = requests.get(url, timeout=15)
+            response = requests.get(url,headers=headers, timeout=15)
             if response.status_code == 200:
                 successful_mirror = mirror
                 break  # Stop trying mirrors if successful
