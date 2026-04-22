@@ -211,16 +211,16 @@ async def sh_download_callback(update, context):
         
         pdf_url = None
         
-        # 3. روش اول: پیدا کردن تگ embed یا iframe مخصوص نمایش pdf (استاندارد سای‌هاب)
-        tag_match = re.search(r'<(?:embed|iframe)[^>]*id="pdf"[^>]*>', response.text, re.IGNORECASE)
+        # 3. روش اول: پیدا کردن تگ embed یا iframe (پشتیبانی از کوتیشن‌های سینگل و جفت)
+        tag_match = re.search(r'<(?:embed|iframe)[^>]*id=[\'"]pdf[\'"][^>]*>', response.text, re.IGNORECASE)
         if tag_match:
-            src_match = re.search(r'src="([^"]+)"', tag_match.group(0), re.IGNORECASE)
+            src_match = re.search(r'src=[\'"]([^\'"]+)[\'"]', tag_match.group(0), re.IGNORECASE)
             if src_match:
                 pdf_url = src_match.group(1)
         
-        # 4. روش دوم: اگر تگ بالا نبود، جستجوی دکمه سمت چپ (Save)
+        # 4. روش دوم: اگر تگ بالا نبود، جستجوی مستقیم اکشن دکمه دانلود
         if not pdf_url:
-            button_match = re.search(r'onclick="location\.href=\'([^\']+)\'"', response.text, re.IGNORECASE)
+            button_match = re.search(r'location\.href=[\'"]([^\'"]+)[\'"]', response.text, re.IGNORECASE)
             if button_match:
                 pdf_url = button_match.group(1)
                 
