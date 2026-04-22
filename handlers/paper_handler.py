@@ -4,50 +4,10 @@ import uuid
 import shutil
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
-from utils.search_papers import search_openalex # Updated import
+from utils.search_papers import search_all_sources, search_openalex # Updated import
 from utils.download_helper import download_file_async, split_file
 
-# async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     if not context.args:
-#         await update.message.reply_text("لطفا موضوع مقاله را وارد کنید.\nمثال: /scholar deep learning")
-#         return
 
-#     query = " ".join(context.args)
-#     message = await update.message.reply_text("در حال جستجو در OpenAlex...")
-    
-#     # Call the new OpenAlex search
-#     results = search_openalex(query, max_results=5)
-    
-#     if not results:
-#         await message.edit_text("مقاله ای یافت نشد یا خطایی رخ داد.")
-#         return
-
-#     text = f"نتایج جستجو برای: {query}\n\n"
-#     keyboard = []
-#     row = []
-    
-#     for i, res in enumerate(results, 1):
-#         text += f"*{i}. {res['title']}*\n"
-#         text += f"👤 نویسندگان: {res['authors']}\n"
-#         text += f"📅 سال: {res['year']}\n"
-        
-#         if res['pdf_link']:
-#             text += "✅ فایل PDF موجود است\n\n"
-#             # Changed prefix to paper_pdf
-#             # Note: Telegram limits callback_data to 64 bytes. 
-#             # If the URL is very long, this might need a workaround like storing URLs in a temp dict.
-#             cb_data = f"paper_pdf|{res['pdf_link']}" 
-#             if len(cb_data.encode('utf-8')) <= 64:
-#                 row.append(InlineKeyboardButton(str(i), callback_data=cb_data))
-#         else:
-#             text += "❌ فایل PDF رایگان یافت نشد\n\n"
-            
-#     if row:
-#         keyboard.append(row)
-        
-#     reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-    
-#     await message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("لطفا کلمه کلیدی را وارد کنید. مثال: /scholar machine learning")
@@ -59,7 +19,9 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await update.message.reply_text(f"در حال جستجو برای: {query} ...")
     
-    results = search_openalex(query, page=1)
+    # results = search_openalex(query, page=1)
+    results = search_all_sources(query, page=1)
+
     
     if not results:
         await update.message.reply_text("مقاله‌ای یافت نشد.")
@@ -68,6 +30,7 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
     # Send the first 5 results
     text = f"📚 *نتایج جستجو برای:* {query}\n\n"
     download_buttons = []
+    sh_buttons = []
 
     for i, res in enumerate(results, 1):
         text += f"*{i}. {res['title']}*\n"
@@ -83,12 +46,17 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
             download_buttons.append(
                 InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
             )
+        if res.get('doi'):
+            sh_buttons.append(InlineKeyboardButton(f"SH {i}", url=f"https://sci-hub.st/{res['doi']}"))
         else:
             text += "❌ فایل PDF موجود نیست\n\n"
 
     keyboard = []
     if download_buttons:
         keyboard.append(download_buttons)
+
+    if sh_buttons:
+        keyboard.append(sh_buttons)
         
     keyboard.append([InlineKeyboardButton("⬇️ دریافت 5 مقاله بعدی", callback_data="scholar_page|2")])
     
