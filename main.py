@@ -70,7 +70,7 @@ def main() -> None:
     # پینترست
     application.add_handler(CommandHandler("pin", pin_command))
     application.add_handler(CallbackQueryHandler(pin_download_callback, pattern="^pindl_"))
-    # application.add_handler(CallbackQueryHandler(pin_page_callback, pattern=r"^pin_page\|"))
+    application.add_handler(CallbackQueryHandler(pin_page_callback, pattern=r"^pin_page\|"))
 
     application.add_handler(CommandHandler("tgposts", tgposts_command))
     application.add_handler(CallbackQueryHandler(handle_download_rar_button, pattern="^dlrar:"))
