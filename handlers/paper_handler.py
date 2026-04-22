@@ -232,17 +232,24 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         pdf_response = requests.get(pdf_url, headers=headers, stream=True, timeout=20, allow_redirects=True)
         print(f"[DEBUG] Status: {pdf_response.status_code}, Content-Type: {pdf_response.headers.get('Content-Type')}")
 
-        if pdf_response.status_code == 200 and 'application/pdf' in pdf_response.headers.get('Content-Type', ''):
-            pdf_data = io.BytesIO(pdf_response.content)
-            # ادامه کد...
-        else:
-            await status_msg.edit_text(f"❌ فایل PDF دریافت نشد (Status: {pdf_response.status_code})")
+        pdf_response = requests.get(
+            pdf_url, 
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': url  # این خط کلیدی است!
+            },
+            stream=True, 
+            timeout=20,
+            allow_redirects=True
+        )
 
-        if pdf_response.status_code == 200:
+        print(f"[DEBUG] PDF Status: {pdf_response.status_code}, Content-Type: {pdf_response.headers.get('Content-Type')}")
+
+        if pdf_response.status_code == 200 and 'application/pdf' in pdf_response.headers.get('Content-Type', ''):
             pdf_data = io.BytesIO(pdf_response.content)
             pdf_data.name = f"{doi.replace('/', '_')}.pdf"
 
-            await status_msg.edit_text("✅ در حال ارسال فایل...")
+            await status_msg.edit_text("✅ در حال ارسال فایل...")  # تصحیح تایپو
             await context.bot.send_document(
                 chat_id=query.message.chat_id,
                 document=pdf_data,
@@ -251,7 +258,7 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ خطا در دانلود فایل PDF.")
+            await status_msg.edit_text(f"❌ خطا در دانلود PDF (Status: {pdf_response.status_code})")
     except Exception as e:
         print(f"[!] Exception occurred: {e}")
         await status_msg.edit_text(f"❌ خطای سیستمی رخ داد.")
