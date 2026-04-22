@@ -175,7 +175,6 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
 
     data = query.data
-    # data format: "sh_dl_<doi>"
     doi = data.split('|', 1)[1]
 
     status_msg = await query.message.reply_text("⏳ در حال دریافت از Sci-Hub...")
@@ -196,10 +195,10 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         url = f"{mirror}/{doi}"
         print(f"[*] Requesting Sci-Hub: {url}")
         try:
-            response = requests.get(url,headers=headers, timeout=15)
+            response = requests.get(url, headers=headers, timeout=15)
             if response.status_code == 200:
                 successful_mirror = mirror
-                break  # Stop trying mirrors if successful
+                break
         except Exception as e:
             print(f"[!] Failed to connect to {mirror}: {e}")
 
@@ -207,56 +206,30 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await status_msg.edit_text("❌ خطا در ارتباط با سرورهای Sci-Hub.")
         return
 
-    print(f"[*] Sci-Hub Status Code: {response}")
+    print(f"[*] Sci-Hub Status Code: {response.status_code}")
     
-    # ==========================================
-    # DEBUG: ذخیره سورس صفحه برای بررسی ساختار
-    # ==========================================
-    try:
-        with open("scihub_debug.html", "w", encoding="utf-8") as f:
-            f.write(response.text)
-        print("[*] Saved Sci-Hub HTML to scihub_debug.html")
-    except Exception as e:
-        print(f"[!] Could not write debug file: {e}")
-    # ==========================================
-
+    # Parse HTML با BeautifulSoup
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # استخراج لینک PDF از meta tag
     pdf_url = None
+    pdf_meta = soup.find('meta', {'name': 'citation_pdf_url'})
+    if pdf_meta:
+        pdf_path = pdf_meta.get('content')
+        if pdf_path:
+            pdf_url = f"{successful_mirror}{pdf_path}"
     
-    # 1. پیدا کردن هر تگ embed یا iframe و استخراج src
-    tag_match = re.search(r'<(?:embed|iframe)[^>]*src=[\'"]([^\'"]+)[\'"]', response.text, re.IGNORECASE)
-    if tag_match:
-        pdf_url = tag_match.group(1)
-    
-    # 2. جستجوی مستقیم
-    if not pdf_url:
-        direct_match = re.search(r'[\'"](//[^\'"]+\.pdf[^\'"]*)[\'"]', response.text, re.IGNORECASE)
-        if direct_match:
-            pdf_url = direct_match.group(1)
-            
-    # 3. جستجوی دکمه دانلود
-    if not pdf_url:
-        btn_match = re.search(r'href=[\'"]([^\'"]+\.pdf[^\'"]*)[\'"]', response.text, re.IGNORECASE)
-        if btn_match:
-            pdf_url = btn_match.group(1)
-
     print(f"[*] Extracted PDF URL: {pdf_url}")
 
-    # اگر لینک پیدا نشد، متوقف شو تا خطا ندهد
     if not pdf_url:
-        await status_msg.edit_text("❌ لینک فایل PDF در صفحه یافت نشد (ممکن است نیاز به کپچا باشد یا مقاله موجود نباشد). فایل scihub_debug.html را در سرور بررسی کنید.")
+        await status_msg.edit_text("❌ لینک فایل PDF در صفحه یافت نشد.")
         return
 
     try:
-        if pdf_url.startswith("//"):
-            pdf_url = "https:" + pdf_url
-        elif pdf_url.startswith("/"):
-            pdf_url = successful_mirror + pdf_url
-        elif not pdf_url.startswith("http"):
-            pdf_url = f"{successful_mirror}/{pdf_url}"
-
         print(f"[*] Final PDF Download URL: {pdf_url}")
 
-        pdf_response = requests.get(pdf_url, stream=True, timeout=20)
+        pdf_response = requests.get(pdf_url, headers=headers, stream=True, timeout=20)
         if pdf_response.status_code == 200:
             pdf_data = io.BytesIO(pdf_response.content)
             pdf_data.name = f"{doi.replace('/', '_')}.pdf"
@@ -270,8 +243,7 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ خطا در دانلود فایل PDF از لینک استخراج شده.")
+            await status_msg.edit_text("❌ خطا در دانلود فایل PDF.")
     except Exception as e:
         print(f"[!] Exception occurred: {e}")
         await status_msg.edit_text(f"❌ خطای سیستمی رخ داد.")
-
