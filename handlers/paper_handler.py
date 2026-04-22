@@ -1,4 +1,5 @@
 
+import io
 import os
 import uuid
 import shutil
@@ -175,7 +176,7 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     data = query.data
     # data format: "sh_dl_<doi>"
-    doi = data[6:]
+    doi = data.split('|', 1)[1]
 
     status_msg = await query.message.reply_text("⏳ در حال دریافت از Sci-Hub...")
 
