@@ -173,43 +173,80 @@ async def sh_download_callback(update, context):
     query_call = update.callback_query
     await query_call.answer("در حال دریافت از Sci-Hub، لطفا چند لحظه صبر کنید...")
     
-    # استخراج DOI از دکمه
+    # استخراج DOI و تمیز کردن آن (گاهی OpenAlex لینک کامل doi.org را برمی‌گرداند)
     _, doi = query_call.data.split("|", 1)
+    doi = doi.replace("https://doi.org/", "").strip()
     chat_id = update.effective_chat.id
     
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        sh_url = f"https://sci-hub.st/{doi}"
+        # هدرهای کامل‌تر مرورگر برای جلوگیری از بلاک شدن
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+        # دامنه .se معمولا پایدارتر از .st است
+        sh_url = f"https://sci-hub.se/{doi}"
+        
+        print(f"\n[*] Requesting Sci-Hub: {sh_url}")
         
         # 1. دریافت صفحه HTML سای‌هاب
         response = requests.get(sh_url, headers=headers, timeout=15)
+        print(f"[*] Sci-Hub Status Code: {response.status_code}")
         
-        # 2. پیدا کردن لینک مخفی PDF در سورس صفحه با Regex
-        match = re.search(r'src="(.*?\.pdf.*?)"', response.text)
-        if not match:
-            await context.bot.send_message(chat_id=chat_id, text="متاسفانه PDF این مقاله در Sci-Hub یافت نشد.")
+        pdf_url = None
+        
+        # 2. روش اول: پیدا کردن تگ embed یا iframe مخصوص نمایش pdf (استاندارد سای‌هاب)
+        tag_match = re.search(r'<(?:embed|iframe)[^>]*id="pdf"[^>]*>', response.text, re.IGNORECASE)
+        if tag_match:
+            src_match = re.search(r'src="([^"]+)"', tag_match.group(0), re.IGNORECASE)
+            if src_match:
+                pdf_url = src_match.group(1)
+        
+        # 3. روش دوم: اگر تگ بالا نبود، جستجوی دکمه سمت چپ (Save)
+        if not pdf_url:
+            button_match = re.search(r'onclick="location\.href=\'([^\']+)\'"', response.text, re.IGNORECASE)
+            if button_match:
+                pdf_url = button_match.group(1)
+                
+        if not pdf_url:
+            # چاپ بخشی از سورس صفحه برای اینکه در کنسول سرور ببینید سای‌هاب چه جوابی داده (کپچا، ارور، مسدودی و...)
+            print("[!] PDF link not found. HTML Snippet:")
+            print(response.text[:500]) 
+            await context.bot.send_message(chat_id=chat_id, text="متاسفانه PDF این مقاله در Sci-Hub یافت نشد (احتمال مسدودی آی‌پی سرور یا عدم وجود مقاله).")
             return
             
-        pdf_url = match.group(1)
+        print(f"[*] Extracted PDF URL: {pdf_url}")
+        
         # اصلاح لینک در صورتی که // یا / داشته باشد
         if pdf_url.startswith('//'):
             pdf_url = 'https:' + pdf_url
         elif pdf_url.startswith('/'):
-            pdf_url = 'https://sci-hub.st' + pdf_url
+            pdf_url = 'https://sci-hub.se' + pdf_url
             
-        # 3. دانلود فایل PDF و ارسال به کاربر
+        # 4. دانلود فایل PDF و ارسال به کاربر
         await context.bot.send_message(chat_id=chat_id, text="فایل یافت شد. در حال آپلود...")
-        pdf_resp = requests.get(pdf_url, headers=headers, timeout=30)
+        
+        print(f"[*] Downloading PDF from: {pdf_url}")
+        pdf_resp = requests.get(pdf_url, headers=headers, timeout=60)
         
         if pdf_resp.status_code == 200:
-            await context.bot.send_document(
-                chat_id=chat_id, 
-                document=pdf_resp.content, 
-                filename=f"SciHub_{doi.replace('/', '_')}.pdf"
-            )
+            # بررسی اینکه فایل دریافتی واقعا PDF باشد (گاهی سای‌هاب صفحه HTML ارور برمی‌گرداند)
+            if pdf_resp.content.startswith(b'%PDF'):
+                safe_doi = doi.split('/')[-1] if '/' in doi else doi
+                await context.bot.send_document(
+                    chat_id=chat_id, 
+                    document=pdf_resp.content, 
+                    filename=f"SciHub_{safe_doi}.pdf"
+                )
+                print("[*] Upload to Telegram successful.")
+            else:
+                await context.bot.send_message(chat_id=chat_id, text="فایل دریافت شده خراب است یا از سمت سای‌هاب مسدود شده است.")
+                print("[!] Downloaded content is not a PDF (Missing %PDF header).")
         else:
             await context.bot.send_message(chat_id=chat_id, text="خطا در دانلود فایل از سرور Sci-Hub.")
+            print(f"[!] PDF Download failed with status: {pdf_resp.status_code}")
             
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text="ارتباط با Sci-Hub برقرار نشد یا زمان‌بر شد.")
-        print(f"Sci-Hub error: {e}")
+        print(f"[!] Exception occurred: {e}")
