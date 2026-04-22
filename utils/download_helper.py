@@ -43,7 +43,7 @@ async def download_file_async(url, dest_folder, progress_callback=None):
             return filepath
 
 
-def split_file(filepath, chunk_size=19 * 1024 * 1024):  # Default 19 MB chunks
+def split_file(filepath, chunk_size=12 * 1024 * 1024):  # Default 19 MB chunks
     """Splits a file into binary chunks."""
     file_size = os.path.getsize(filepath)
     if file_size <= chunk_size:
