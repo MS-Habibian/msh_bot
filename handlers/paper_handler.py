@@ -211,25 +211,22 @@ async def sh_download_callback(update, context):
         
         pdf_url = None
         
-        # 3. روش اول: پیدا کردن تگ embed یا iframe (پشتیبانی از کوتیشن‌های سینگل و جفت)
-        tag_match = re.search(r'<(?:embed|iframe)[^>]*id=[\'"]pdf[\'"][^>]*>', response.text, re.IGNORECASE)
+        # 1. پیدا کردن هر تگ embed یا iframe و استخراج src (بدون وابستگی به id="pdf")
+        tag_match = re.search(r'<(?:embed|iframe)[^>]*src=[\'"]([^\'"]+)[\'"]', response.text, re.IGNORECASE)
         if tag_match:
-            src_match = re.search(r'src=[\'"]([^\'"]+)[\'"]', tag_match.group(0), re.IGNORECASE)
-            if src_match:
-                pdf_url = src_match.group(1)
+            pdf_url = tag_match.group(1)
         
-        # 4. روش دوم: اگر تگ بالا نبود، جستجوی مستقیم اکشن دکمه دانلود
+        # 2. اگر تگ پیدا نشد، مستقیماً به دنبال هر لینکی بگرد که با // شروع شده و شامل .pdf است
         if not pdf_url:
-            button_match = re.search(r'location\.href=[\'"]([^\'"]+)[\'"]', response.text, re.IGNORECASE)
-            if button_match:
-                pdf_url = button_match.group(1)
+            direct_match = re.search(r'[\'"](//[^\'"]+\.pdf[^\'"]*)[\'"]', response.text, re.IGNORECASE)
+            if direct_match:
+                pdf_url = direct_match.group(1)
                 
+        # 3. جستجوی دکمه دانلود (فرمت‌های جایگزین)
         if not pdf_url:
-            # چاپ بخشی از سورس صفحه برای دیباگ کردن در لاگ‌های سرور (کپچا، ارور و غیره)
-            print("[!] PDF link not found. HTML Snippet:")
-            print(response.text[:500]) 
-            await context.bot.send_message(chat_id=chat_id, text="متاسفانه PDF این مقاله در Sci-Hub یافت نشد (احتمال مسدودی آی‌پی سرور یا عدم وجود مقاله).")
-            return
+            btn_match = re.search(r'href=[\'"]([^\'"]+\.pdf[^\'"]*)[\'"]', response.text, re.IGNORECASE)
+            if btn_match:
+                pdf_url = btn_match.group(1)
             
         print(f"[*] Extracted PDF URL: {pdf_url}")
         
