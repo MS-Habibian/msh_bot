@@ -198,7 +198,7 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await status_msg.edit_text("❌ خطا در ارتباط با سرورهای Sci-Hub.")
         return
 
-    print(f"[*] Sci-Hub Status Code: {response.status_code}")
+    print(f"[*] Sci-Hub Status Code: {response}")
     
     # ==========================================
     # DEBUG: ذخیره سورس صفحه برای بررسی ساختار
