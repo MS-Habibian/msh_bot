@@ -169,98 +169,100 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
 
 
 
-async def sh_download_callback(update, context):
-    query_call = update.callback_query
-    await query_call.answer("در حال دریافت از Sci-Hub، لطفا چند لحظه صبر کنید...")
-    
-    # استخراج DOI و تمیز کردن آن (گاهی OpenAlex لینک کامل doi.org را برمی‌گرداند)
-    _, doi = query_call.data.split("|", 1)
-    doi = doi.replace("https://doi.org/", "").strip()
-    chat_id = update.effective_chat.id
-    
-    try:
-        # هدرهای کامل‌تر مرورگر برای جلوگیری از بلاک شدن
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-        }
-        
-        mirrors = ["https://sci-hub.se", "https://sci-hub.ru", "https://sci-hub.st"]
-        response = None
-        sh_url = None
+async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-        # 1. پیدا کردن یک میرور سالم (حلقه فقط برای برقراری ارتباط است)
-        for mirror in mirrors:
-            sh_url = f"{mirror}/{doi}"
-            print(f"\n[*] Requesting Sci-Hub: {sh_url}")
-            try:
-                response = requests.get(sh_url, headers=headers, timeout=15)
-                response.raise_for_status() # Raises an exception for 4xx or 5xx status codes
-                break  # ارتباط موفق بود، پس از حلقه خارج می‌شویم تا سراغ دانلود برویم
-            except requests.exceptions.RequestException as e:
-                print(f"[!] Failed to connect to {mirror}: {e}")
-                response = None # پاک کردن متغیر برای امتحان میرور بعدی
-        
-        # 2. بررسی بیرون از حلقه: آیا ارتباط با تمام میرورها با شکست مواجه شد؟
-        if not response:
-            await context.bot.send_message(chat_id=chat_id, text="متاسفانه در حال حاضر ارتباط با هیچ‌کدام از سرورهای Sci-Hub امکان‌پذیر نیست (مشکل شبکه یا DNS).")
-            return
-            
-        print(f"[*] Sci-Hub Status Code: {response.status_code}")
-        
-        pdf_url = None
-        
-        # 1. پیدا کردن هر تگ embed یا iframe و استخراج src (بدون وابستگی به id="pdf")
-        tag_match = re.search(r'<(?:embed|iframe)[^>]*src=[\'"]([^\'"]+)[\'"]', response.text, re.IGNORECASE)
-        if tag_match:
-            pdf_url = tag_match.group(1)
-        
-        # 2. اگر تگ پیدا نشد، مستقیماً به دنبال هر لینکی بگرد که با // شروع شده و شامل .pdf است
-        if not pdf_url:
-            direct_match = re.search(r'[\'"](//[^\'"]+\.pdf[^\'"]*)[\'"]', response.text, re.IGNORECASE)
-            if direct_match:
-                pdf_url = direct_match.group(1)
-                
-        # 3. جستجوی دکمه دانلود (فرمت‌های جایگزین)
-        if not pdf_url:
-            btn_match = re.search(r'href=[\'"]([^\'"]+\.pdf[^\'"]*)[\'"]', response.text, re.IGNORECASE)
-            if btn_match:
-                pdf_url = btn_match.group(1)
-            
-        print(f"[*] Extracted PDF URL: {pdf_url}")
-        
-        # اصلاح لینک در صورتی که // یا / داشته باشد
-        if pdf_url.startswith('//'):
-            pdf_url = 'https:' + pdf_url
-        elif pdf_url.startswith('/'):
-            # استخراج دامنه میروری که کار کرده است برای آدرس‌های نسبی (مثلاً https://sci-hub.se)
-            base_url = "/".join(sh_url.split("/")[:3]) 
-            pdf_url = base_url + pdf_url
-            
-        # 5. دانلود فایل PDF و ارسال به کاربر
-        await context.bot.send_message(chat_id=chat_id, text="فایل یافت شد. در حال آپلود...")
-        
-        print(f"[*] Downloading PDF from: {pdf_url}")
-        pdf_resp = requests.get(pdf_url, headers=headers, timeout=60)
-        
-        if pdf_resp.status_code == 200:
-            # بررسی اینکه فایل دریافتی واقعا PDF باشد
-            if pdf_resp.content.startswith(b'%PDF'):
-                safe_doi = doi.split('/')[-1] if '/' in doi else doi
-                await context.bot.send_document(
-                    chat_id=chat_id, 
-                    document=pdf_resp.content, 
-                    filename=f"SciHub_{safe_doi}.pdf"
-                )
-                print("[*] Upload to Telegram successful.")
-            else:
-                await context.bot.send_message(chat_id=chat_id, text="فایل دریافت شده خراب است یا از سمت سای‌هاب مسدود شده است.")
-                print("[!] Downloaded content is not a PDF (Missing %PDF header).")
-        else:
-            await context.bot.send_message(chat_id=chat_id, text="خطا در دانلود فایل از سرور Sci-Hub.")
-            print(f"[!] PDF Download failed with status: {pdf_resp.status_code}")
-            
+    data = query.data
+    # data format: "sh_dl_<doi>"
+    doi = data[6:]
+
+    status_msg = await query.message.reply_text("⏳ در حال دریافت از Sci-Hub...")
+
+    mirrors = ["https://sci-hub.se", "https://sci-hub.ru", "https://sci-hub.st"]
+    response = None
+    successful_mirror = None
+
+    for mirror in mirrors:
+        url = f"{mirror}/{doi}"
+        print(f"[*] Requesting Sci-Hub: {url}")
+        try:
+            response = requests.get(url, timeout=15)
+            if response.status_code == 200:
+                successful_mirror = mirror
+                break  # Stop trying mirrors if successful
+        except Exception as e:
+            print(f"[!] Failed to connect to {mirror}: {e}")
+
+    if not response or response.status_code != 200:
+        await status_msg.edit_text("❌ خطا در ارتباط با سرورهای Sci-Hub.")
+        return
+
+    print(f"[*] Sci-Hub Status Code: {response.status_code}")
+    
+    # ==========================================
+    # DEBUG: ذخیره سورس صفحه برای بررسی ساختار
+    # ==========================================
+    try:
+        with open("scihub_debug.html", "w", encoding="utf-8") as f:
+            f.write(response.text)
+        print("[*] Saved Sci-Hub HTML to scihub_debug.html")
     except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text="خطای غیرمنتظره در پردازش درخواست رخ داد.")
+        print(f"[!] Could not write debug file: {e}")
+    # ==========================================
+
+    pdf_url = None
+    
+    # 1. پیدا کردن هر تگ embed یا iframe و استخراج src
+    tag_match = re.search(r'<(?:embed|iframe)[^>]*src=[\'"]([^\'"]+)[\'"]', response.text, re.IGNORECASE)
+    if tag_match:
+        pdf_url = tag_match.group(1)
+    
+    # 2. جستجوی مستقیم
+    if not pdf_url:
+        direct_match = re.search(r'[\'"](//[^\'"]+\.pdf[^\'"]*)[\'"]', response.text, re.IGNORECASE)
+        if direct_match:
+            pdf_url = direct_match.group(1)
+            
+    # 3. جستجوی دکمه دانلود
+    if not pdf_url:
+        btn_match = re.search(r'href=[\'"]([^\'"]+\.pdf[^\'"]*)[\'"]', response.text, re.IGNORECASE)
+        if btn_match:
+            pdf_url = btn_match.group(1)
+
+    print(f"[*] Extracted PDF URL: {pdf_url}")
+
+    # اگر لینک پیدا نشد، متوقف شو تا خطا ندهد
+    if not pdf_url:
+        await status_msg.edit_text("❌ لینک فایل PDF در صفحه یافت نشد (ممکن است نیاز به کپچا باشد یا مقاله موجود نباشد). فایل scihub_debug.html را در سرور بررسی کنید.")
+        return
+
+    try:
+        if pdf_url.startswith("//"):
+            pdf_url = "https:" + pdf_url
+        elif pdf_url.startswith("/"):
+            pdf_url = successful_mirror + pdf_url
+        elif not pdf_url.startswith("http"):
+            pdf_url = f"{successful_mirror}/{pdf_url}"
+
+        print(f"[*] Final PDF Download URL: {pdf_url}")
+
+        pdf_response = requests.get(pdf_url, stream=True, timeout=20)
+        if pdf_response.status_code == 200:
+            pdf_data = io.BytesIO(pdf_response.content)
+            pdf_data.name = f"{doi.replace('/', '_')}.pdf"
+
+            await status_msg.edit_text("✅ در حال ارسال فایل...")
+            await context.bot.send_document(
+                chat_id=query.message.chat_id,
+                document=pdf_data,
+                filename=pdf_data.name,
+                caption=f"📄 {doi}\n📥 دانلود شده از Sci-Hub"
+            )
+            await status_msg.delete()
+        else:
+            await status_msg.edit_text("❌ خطا در دانلود فایل PDF از لینک استخراج شده.")
+    except Exception as e:
         print(f"[!] Exception occurred: {e}")
+        await status_msg.edit_text(f"❌ خطای سیستمی رخ داد.")
+
