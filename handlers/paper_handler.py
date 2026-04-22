@@ -229,7 +229,15 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         print(f"[*] Final PDF Download URL: {pdf_url}")
 
-        pdf_response = requests.get(pdf_url, headers=headers, stream=True, timeout=20)
+        pdf_response = requests.get(pdf_url, headers=headers, stream=True, timeout=20, allow_redirects=True)
+        print(f"[DEBUG] Status: {pdf_response.status_code}, Content-Type: {pdf_response.headers.get('Content-Type')}")
+
+        if pdf_response.status_code == 200 and 'application/pdf' in pdf_response.headers.get('Content-Type', ''):
+            pdf_data = io.BytesIO(pdf_response.content)
+            # ادامه کد...
+        else:
+            await status_msg.edit_text(f"❌ فایل PDF دریافت نشد (Status: {pdf_response.status_code})")
+
         if pdf_response.status_code == 200:
             pdf_data = io.BytesIO(pdf_response.content)
             pdf_data.name = f"{doi.replace('/', '_')}.pdf"
