@@ -2,6 +2,9 @@
 import os
 import uuid
 import shutil
+import re
+
+import requests
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from utils.search_papers import search_all_sources, search_openalex # Updated import
@@ -33,23 +36,23 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
     sh_buttons = []
 
     for i, res in enumerate(results, 1):
-        text += f"*{i}. {res['title']}*\n"
-        text += f"👤 نویسندگان: {res['authors']}\n"
+        authors = ", ".join(res.get('authors', [])) if res.get('authors') else "نامشخص"
+        pdf_status = "✅ دارد" if res.get('pdf_link') else "❌ ندارد"
         
-        # اضافه کردن ژورنال و سال و تعداد ارجاعات
-        journal = res.get('journal', 'نامشخص')
-        text += f"📖 ژورنال: {journal}\n"
-        text += f"📅 سال: {res['year']}\n"
-        
+        text += f"**{i}. {res.get('title', 'بدون عنوان')}**\n"
+        text += f"👤 نویسندگان: {authors}\n"
+        text += f"📖 ژورنال: {res.get('journal', 'نامشخص')} | 📅 سال: {res.get('year', 'نامشخص')}\n"
+        text += f"🔗 تعداد ارجاعات: {res.get('citation', 0)}\n"
+        text += f"📄 فایل آزاد (Open Access): {pdf_status}\n"
+        text += "➖➖➖➖➖➖➖➖\n"
+
+        # دکمه دانلود مستقیم خودتان
         if res.get('pdf_link'):
-            text += "✅ فایل PDF موجود است\n\n"
-            download_buttons.append(
-                InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
-            )
+            download_buttons.append(InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}"))
+            
+        # دکمه Sci-Hub (تغییر یافته به callback برای دانلود داخلی)
         if res.get('doi'):
-            sh_buttons.append(InlineKeyboardButton(f"SH {i}", url=f"https://sci-hub.st/{res['doi']}"))
-        else:
-            text += "❌ فایل PDF موجود نیست\n\n"
+            sh_buttons.append(InlineKeyboardButton(f"SH {i}", callback_data=f"sh_pdf|{res['doi']}"))
 
     keyboard = []
     if download_buttons:
@@ -100,23 +103,33 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
     start_num = (page - 1) * 5 + 1
     text = f"📚 *نتایج صفحه {page} برای:* {query_text}\n\n"
     download_buttons = []
+    sh_buttons = []
 
     for i, res in enumerate(results, start_num):
-        text += f"*{i}. {res['title']}*\n"
-        text += f"👤 نویسندگان: {res['authors']}\n"
-        text += f"📅 سال: {res['year']}\n"
+        authors = ", ".join(res.get('authors', [])) if res.get('authors') else "نامشخص"
+        pdf_status = "✅ دارد" if res.get('pdf_link') else "❌ ندارد"
         
+        text += f"**{i}. {res.get('title', 'بدون عنوان')}**\n"
+        text += f"👤 نویسندگان: {authors}\n"
+        text += f"📖 ژورنال: {res.get('journal', 'نامشخص')} | 📅 سال: {res.get('year', 'نامشخص')}\n"
+        text += f"🔗 تعداد ارجاعات: {res.get('citation', 0)}\n"
+        text += f"📄 فایل آزاد (Open Access): {pdf_status}\n"
+        text += "➖➖➖➖➖➖➖➖\n"
+
+        # دکمه دانلود مستقیم خودتان
         if res.get('pdf_link'):
-            text += "✅ فایل PDF موجود است\n\n"
-            download_buttons.append(
-                InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
-            )
-        else:
-            text += "❌ فایل PDF موجود نیست\n\n"
+            download_buttons.append(InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}"))
+            
+        # دکمه Sci-Hub (تغییر یافته به callback برای دانلود داخلی)
+        if res.get('doi'):
+            sh_buttons.append(InlineKeyboardButton(f"SH {i}", callback_data=f"sh_pdf|{res['doi']}"))
 
     keyboard = []
     if download_buttons:
         keyboard.append(download_buttons)
+
+    if sh_buttons:
+        keyboard.append(sh_buttons)
         
     keyboard.append([InlineKeyboardButton("⬇️ دریافت 5 مقاله بعدی", callback_data=f"scholar_page|{page+1}")])
     
@@ -151,3 +164,52 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     finally:
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir)
+
+
+
+
+
+async def sh_download_callback(update, context):
+    query_call = update.callback_query
+    await query_call.answer("در حال دریافت از Sci-Hub، لطفا چند لحظه صبر کنید...")
+    
+    # استخراج DOI از دکمه
+    _, doi = query_call.data.split("|", 1)
+    chat_id = update.effective_chat.id
+    
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        sh_url = f"https://sci-hub.st/{doi}"
+        
+        # 1. دریافت صفحه HTML سای‌هاب
+        response = requests.get(sh_url, headers=headers, timeout=15)
+        
+        # 2. پیدا کردن لینک مخفی PDF در سورس صفحه با Regex
+        match = re.search(r'src="(.*?\.pdf.*?)"', response.text)
+        if not match:
+            await context.bot.send_message(chat_id=chat_id, text="متاسفانه PDF این مقاله در Sci-Hub یافت نشد.")
+            return
+            
+        pdf_url = match.group(1)
+        # اصلاح لینک در صورتی که // یا / داشته باشد
+        if pdf_url.startswith('//'):
+            pdf_url = 'https:' + pdf_url
+        elif pdf_url.startswith('/'):
+            pdf_url = 'https://sci-hub.st' + pdf_url
+            
+        # 3. دانلود فایل PDF و ارسال به کاربر
+        await context.bot.send_message(chat_id=chat_id, text="فایل یافت شد. در حال آپلود...")
+        pdf_resp = requests.get(pdf_url, headers=headers, timeout=30)
+        
+        if pdf_resp.status_code == 200:
+            await context.bot.send_document(
+                chat_id=chat_id, 
+                document=pdf_resp.content, 
+                filename=f"SciHub_{doi.replace('/', '_')}.pdf"
+            )
+        else:
+            await context.bot.send_message(chat_id=chat_id, text="خطا در دانلود فایل از سرور Sci-Hub.")
+            
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text="ارتباط با Sci-Hub برقرار نشد یا زمان‌بر شد.")
+        print(f"Sci-Hub error: {e}")
