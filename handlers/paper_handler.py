@@ -229,8 +229,8 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         print(f"[*] Final PDF Download URL: {pdf_url}")
 
-        pdf_response = requests.get(pdf_url, headers=headers, stream=True, timeout=20, allow_redirects=True)
-        print(f"[DEBUG] Status: {pdf_response.status_code}, Content-Type: {pdf_response.headers.get('Content-Type')}")
+        # pdf_response = requests.get(pdf_url, headers=headers, stream=True, timeout=20, allow_redirects=True)
+        # print(f"[DEBUG] Status: {pdf_response.status_code}, Content-Type: {pdf_response.headers.get('Content-Type')}")
 
         pdf_response = requests.get(
             pdf_url, 
