@@ -218,8 +218,14 @@ async def sh_download_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if pdf_meta:
         pdf_path = pdf_meta.get('content')
         if pdf_path:
-            pdf_url = f"{successful_mirror}{pdf_path}"
-    
+        # اگر لینک نسبی است، mirror را اضافه کن
+            if pdf_path.startswith('//'):
+                pdf_url = f"https:{pdf_path}"
+            elif pdf_path.startswith('/'):
+                pdf_url = f"{successful_mirror}{pdf_path}"
+            else:
+                pdf_url = pdf_path
+
     print(f"[*] Extracted PDF URL: {pdf_url}")
 
     if not pdf_url:
