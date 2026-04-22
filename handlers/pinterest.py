@@ -229,7 +229,8 @@ async def send_pinterest_page(message, context: ContextTypes.DEFAULT_TYPE, query
     for pin in page_pins:
         keyboard = [[InlineKeyboardButton("📥 دانلود کیفیت اصلی", callback_data=f"pindl_{pin['id']}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await message.reply_photo(photo=pin['image'], reply_markup=reply_markup)
+        await message.reply_photo(photo=pin['original'], reply_markup=reply_markup)
+
 
     # اگر عکس‌های بیشتری برای صفحات بعد وجود دارد، دکمه "۱۰ تصویر بعدی" را بفرست
     if offset + limit < len(pins):
