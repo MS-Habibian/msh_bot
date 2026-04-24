@@ -36,7 +36,8 @@ async def download_podcast_async(url: str, dest_folder: str, progress_callback=N
             downloaded = d.get('downloaded_bytes', 0)
             total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
             # فراخوانی تابع آپدیت تلگرام در event loop اصلی
-            asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), asyncio.get_running_loop())
+            if progress_callback:
+              progress_callback(downloaded, total)
 
     ydl_opts = {
         'format': 'bestaudio/best',

@@ -68,14 +68,12 @@ async def handle_pod_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     data = query.data.split(":")
 
-    # مدیریت دکمه‌های صفحه‌بندی
     if data[0] == "podmore":
         offset = int(data[1])
         query_str = data[2]
         await send_podcast_page(query.message, query_str, offset, context)
         return
 
-    # مدیریت دکمه دانلود
     elif data[0] == "poddl":
         pod_id = data[1]
         pod_url = context.bot_data.get(f"podlink_{pod_id}")
@@ -89,31 +87,37 @@ async def handle_pod_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         await query.edit_message_text("⏳ در حال دانلود پادکست...\nاین کار ممکن است چند دقیقه زمان ببرد.")
 
-        async def update_progress(downloaded, total):
-            try:
-                if total > 0:
-                    percent = (downloaded / total) * 100
-                    text = f"⬇️ *در حال دانلود پادکست...*\nپیشرفت: `{percent:.1f}%`\nحجم: `{format_size(downloaded)} / {format_size(total)}`"
-                else:
-                    text = f"⬇️ *در حال دانلود پادکست...*\nدانلود شده: `{format_size(downloaded)}`"
-                await query.edit_message_text(text=text, parse_mode="Markdown")
-            except Exception:
-                pass 
+        # Capture the main thread's event loop
+        loop = asyncio.get_running_loop()
+
+        # Make this a regular sync function
+        def update_progress(downloaded, total):
+            # Inner async function to do the actual telegram editing
+            async def _do_update():
+                try:
+                    if total > 0:
+                        percent = (downloaded / total) * 100
+                        text = f"⬇️ *در حال دانلود پادکست...*\nپیشرفت: `{percent:.1f}%`\nحجم: `{format_size(downloaded)} / {format_size(total)}`"
+                    else:
+                        text = f"⬇️ *در حال دانلود پادکست...*\nدانلود شده: `{format_size(downloaded)}`"
+                    await query.edit_message_text(text=text, parse_mode="Markdown")
+                except Exception:
+                    pass 
+            
+            # Safely schedule the coroutine in the main loop from any background thread
+            asyncio.run_coroutine_threadsafe(_do_update(), loop)
 
         try:
             # دانلود پادکست
             filepath = await download_podcast_async(pod_url, download_folder, progress_callback=update_progress)
             await query.edit_message_text("✂️ در حال پردازش فایل و آماده‌سازی برای ارسال...")
             
-            # استفاده از تابع شما برای تکه‌تکه کردن فایل صوتی اگر بزرگ‌تر از ۱۹ مگابایت بود (پیش‌فرض تابع)
             part_files = split_media_playable(filepath)
 
-            # زمانبندی برای حذف پوشه
             context.job_queue.run_once(cleanup_folder_job, 5 * 3600, data=download_folder, name=f"cleanup_{file_id}")
 
             await query.edit_message_text(f"✅ *پردازش کامل شد!*\n\n📂 تعداد بخش‌ها: `{len(part_files)}`\n☁️ *در حال آپلود...*", parse_mode="Markdown")
 
-            # ارسال بخش‌ها (دقیقاً مشابه یوتیوب)
             for i, part_path in enumerate(part_files):
                 try:
                     with open(part_path, "rb") as f:
