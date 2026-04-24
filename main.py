@@ -15,6 +15,8 @@ from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_do
 from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
 from handlers.commands import start_command, help_command, help_callback_handler
+from handlers.podcast import pod_command, handle_pod_download_callback
+from telegram.ext import CommandHandler, CallbackQueryHandler
 
 # Import Scholar Handlers
 
@@ -82,6 +84,9 @@ def main() -> None:
     application.add_handler(CommandHandler("scholar", paper_search_command))
     application.add_handler(CallbackQueryHandler(paper_download_callback, pattern=r"^paper_pdf\|"))
     application.add_handler(CallbackQueryHandler(paper_paginate_callback, pattern=r"^scholar_page\|"))
+    # در بخشی که هندلرهای یوتیوب را Add می‌کنید، این خطوط را اضافه کنید:
+    application.add_handler(CommandHandler("podcast", pod_command))
+    application.add_handler(CallbackQueryHandler(handle_pod_download_callback, pattern='^poddl:'))
     # application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
 
 
