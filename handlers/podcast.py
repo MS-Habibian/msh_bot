@@ -18,34 +18,49 @@ async def pod_command(update, context):
     # ارسال context به تابع
     await send_podcast_results(update.message, context, query, offset=0)
 
-async def send_podcast_results(message, context, query, offset):
-    loading_msg = await message.reply_text(f"در حال جستجو برای: {query} (نتایج {offset+1} تا {offset+5})...")
+async def send_podcast_results(message, context, search_query, offset=0):
+    # Fetch a larger number of results (e.g., 50) since iTunes API doesn't use offset
+    # Make sure search_podcasts_async has limit=50 inside it or pass it as an argument
+    all_results = await search_podcast_async(search_query) 
     
-    results = await search_podcast_async(query, limit=5, offset=offset)
-    
-    if not results:
-        await loading_msg.edit_text("❌ پادکستی با این نام یافت نشد.")
+    if not all_results:
+        await message.reply_text("❌ پادکستی یافت نشد.")
         return
 
-    # استفاده از bot_data برای ذخیره کش به جای message.bot
-    if 'podcast_cache' not in context.bot_data:
-        context.bot_data['podcast_cache'] = {}
+    # Slice the results based on the current offset
+    current_results = all_results[offset : offset + 5]
+    
+    if not current_results:
+        await message.reply_text("پادکست دیگری یافت نشد.")
+        return
 
-    text = f"🎧 نتایج جستجو برای: {query}\n\n"
+    text = f"🔎 نتایج جستجو برای: {search_query}\n\n"
     keyboard = []
     
-    for i, res in enumerate(results, 1):
-        text += f"{i}. {res['title']}\n🎙 {res['podcast_name']}\n\n"
-        keyboard.append([InlineKeyboardButton(f"📥 دانلود شماره {i}", callback_data=f"poddl:{res['id']}")])
+    for i, pod in enumerate(current_results):
+        track_name = pod.get('trackName', 'Unknown')
+        artist_name = pod.get('artistName', 'Unknown')
+        track_id = pod.get('trackId')
         
-        # ذخیره لینک در کش
-        if res['audio_url']:
-            context.bot_data['podcast_cache'][str(res['id'])] = res['audio_url']
+        text += f"**{i + 1 + offset}.** {track_name}\n👤 {artist_name}\n\n"
+        
+        # Save to cache if you are using one
+        context.bot_data.setdefault('podcast_cache', {})[str(track_id)] = pod.get('feedUrl')
+        
+        keyboard.append([InlineKeyboardButton(f"📥 دانلود شماره {i + 1 + offset}", callback_data=f"poddl:{track_id}")])
 
-    safe_query = query[:20] 
-    keyboard.append([InlineKeyboardButton("⬇️ نتایج بعدی", callback_data=f"podmore:{offset+5}:{safe_query}")])
+    # Add the "Next 5" button ONLY if there are more results left
+    if offset + 5 < len(all_results):
+        next_offset = offset + 5
+        keyboard.append([InlineKeyboardButton("➡️ 5 نتیجه بعدی", callback_data=f"podmore:{next_offset}:{search_query}")])
 
-    await loading_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # If this is an edit (clicking next), edit the message. Otherwise, reply.
+    if offset == 0:
+        await message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await message.edit_text(text, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def handle_pod_callback(update, context):
     query = update.callback_query
