@@ -1,53 +1,14 @@
 
+import asyncio
 import os
 import uuid
 import shutil
+from scidownl import scihub_download
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from utils.search_papers import search_openalex # Updated import
 from utils.download_helper import download_file_async, split_file
 
-# async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#     if not context.args:
-#         await update.message.reply_text("لطفا موضوع مقاله را وارد کنید.\nمثال: /scholar deep learning")
-#         return
-
-#     query = " ".join(context.args)
-#     message = await update.message.reply_text("در حال جستجو در OpenAlex...")
-    
-#     # Call the new OpenAlex search
-#     results = search_openalex(query, max_results=5)
-    
-#     if not results:
-#         await message.edit_text("مقاله ای یافت نشد یا خطایی رخ داد.")
-#         return
-
-#     text = f"نتایج جستجو برای: {query}\n\n"
-#     keyboard = []
-#     row = []
-    
-#     for i, res in enumerate(results, 1):
-#         text += f"*{i}. {res['title']}*\n"
-#         text += f"👤 نویسندگان: {res['authors']}\n"
-#         text += f"📅 سال: {res['year']}\n"
-        
-#         if res['pdf_link']:
-#             text += "✅ فایل PDF موجود است\n\n"
-#             # Changed prefix to paper_pdf
-#             # Note: Telegram limits callback_data to 64 bytes. 
-#             # If the URL is very long, this might need a workaround like storing URLs in a temp dict.
-#             cb_data = f"paper_pdf|{res['pdf_link']}" 
-#             if len(cb_data.encode('utf-8')) <= 64:
-#                 row.append(InlineKeyboardButton(str(i), callback_data=cb_data))
-#         else:
-#             text += "❌ فایل PDF رایگان یافت نشد\n\n"
-            
-#     if row:
-#         keyboard.append(row)
-        
-#     reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-    
-#     await message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("لطفا کلمه کلیدی را وارد کنید. مثال: /scholar machine learning")
@@ -78,13 +39,23 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
         text += f"📖 ژورنال: {journal}\n"
         text += f"📅 سال: {res['year']}\n"
         
-        if res.get('pdf_link'):
+        # if res.get('pdf_link'):
+        #     text += "✅ فایل PDF موجود است\n\n"
+        #     download_buttons.append(
+        #         InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
+        #     )
+        if res.get('doi'):
+            text += "✅ دانلود فایل از sci hub\n\n"
+            callback_data = f"paper_dl_doi|{res['doi']}"
+        elif res.get('pdf_link'):
             text += "✅ فایل PDF موجود است\n\n"
-            download_buttons.append(
-                InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
-            )
+            callback_data = f"paper_pdf|{res['pdf_link'][:50]}"
         else:
             text += "❌ فایل PDF موجود نیست\n\n"
+
+        download_buttons.append(
+            InlineKeyboardButton(str(i), callback_data)
+        )
 
     keyboard = []
     if download_buttons:
@@ -159,21 +130,27 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     
-    # Extract URL from the new prefix
-    _, pdf_url = query.data.split("|", 1)
+    # Extract DOI from the prefix (Assuming your callback data is now something like "paper_dl|{doi}")
+    _, doi = query.data.split("|", 1)
     
-    await context.bot.send_message(chat_id=query.message.chat_id, text="در حال دانلود مقاله...")
+    await context.bot.send_message(chat_id=query.message.chat_id, text="در حال دانلود مقاله از Sci-Hub...")
     
     download_dir = f"downloads/{uuid.uuid4()}"
     os.makedirs(download_dir, exist_ok=True)
     
+    # scidownl needs an exact file path to save the PDF
+    out_path = os.path.join(download_dir, "paper.pdf")
+    
     try:
-        # Pass the DIRECTORY (download_dir), not the file path. 
-        # The function will return the final path to the downloaded file.
-        downloaded_file = await download_file_async(pdf_url, download_dir)
+        # Run the blocking scihub_download function in a separate thread
+        await asyncio.to_thread(scihub_download, doi, paper_type="doi", out=out_path)
         
+        # Check if Sci-Hub actually returned a file
+        if not os.path.exists(out_path):
+            raise Exception("مقاله در Sci-Hub یافت نشد.")
+            
         # Split and send using the returned file path
-        parts = split_file(downloaded_file)
+        parts = split_file(out_path)
         for part in parts:
             with open(part, 'rb') as f:
                 await context.bot.send_document(chat_id=query.message.chat_id, document=f)
@@ -183,3 +160,30 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     finally:
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir)
+    # query = update.callback_query
+    # await query.answer()
+    
+    # # Extract URL from the new prefix
+    # _, pdf_url = query.data.split("|", 1)
+    
+    # await context.bot.send_message(chat_id=query.message.chat_id, text="در حال دانلود مقاله...")
+    
+    # download_dir = f"downloads/{uuid.uuid4()}"
+    # os.makedirs(download_dir, exist_ok=True)
+    
+    # try:
+    #     # Pass the DIRECTORY (download_dir), not the file path. 
+    #     # The function will return the final path to the downloaded file.
+    #     downloaded_file = await download_file_async(pdf_url, download_dir)
+        
+    #     # Split and send using the returned file path
+    #     parts = split_file(downloaded_file)
+    #     for part in parts:
+    #         with open(part, 'rb') as f:
+    #             await context.bot.send_document(chat_id=query.message.chat_id, document=f)
+                
+    # except Exception as e:
+    #     await context.bot.send_message(chat_id=query.message.chat_id, text=f"خطا در دانلود مقاله: {e}")
+    # finally:
+    #     if os.path.exists(download_dir):
+    #         shutil.rmtree(download_dir)
