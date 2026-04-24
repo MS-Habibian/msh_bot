@@ -96,24 +96,28 @@ async def handle_pod_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         def update_progress(downloaded, total):
             current_time = time.time()
-            # Only update Telegram every 2 seconds, OR if the download is completely finished
-            if current_time - last_update_time[0] < 2.0 and downloaded < total:
+            
+            # Strict Throttle: Update maximum once every 2 seconds, no exceptions.
+            if current_time - last_update_time[0] < 2.0:
                 return
             
             last_update_time[0] = current_time
 
             async def _do_update():
                 try:
-                    if total > 0:
+                    # Handle None or 0 total gracefully
+                    if total and total > 0:
                         percent = (downloaded / total) * 100
                         text = f"⬇️ *در حال دانلود پادکست...*\nپیشرفت: `{percent:.1f}%`\nحجم: `{format_size(downloaded)} / {format_size(total)}`"
                     else:
-                        text = f"⬇️ *در حال دانلود پادکست...*\nدانلود شده: `{format_size(downloaded)}`"
+                        text = f"⬇️ *در حال دانلود پادکست (استریم)...*\nدانلود شده: `{format_size(downloaded)}`"
+                    
                     await query.edit_message_text(text=text, parse_mode="Markdown")
                 except Exception:
                     pass 
             
             asyncio.run_coroutine_threadsafe(_do_update(), loop)
+
 
         try:
             # دانلود پادکست
