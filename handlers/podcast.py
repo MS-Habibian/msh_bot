@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 import uuid
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
@@ -88,12 +89,19 @@ async def handle_pod_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         await query.edit_message_text("⏳ در حال دانلود پادکست...\nاین کار ممکن است چند دقیقه زمان ببرد.")
 
-        # Capture the main thread's event loop
         loop = asyncio.get_running_loop()
+        
+        # Use a list to store the last update time so we can modify it inside the inner function
+        last_update_time = [0.0]
 
-        # Make this a regular sync function
         def update_progress(downloaded, total):
-            # Inner async function to do the actual telegram editing
+            current_time = time.time()
+            # Only update Telegram every 2 seconds, OR if the download is completely finished
+            if current_time - last_update_time[0] < 2.0 and downloaded < total:
+                return
+            
+            last_update_time[0] = current_time
+
             async def _do_update():
                 try:
                     if total > 0:
@@ -105,7 +113,6 @@ async def handle_pod_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 except Exception:
                     pass 
             
-            # Safely schedule the coroutine in the main loop from any background thread
             asyncio.run_coroutine_threadsafe(_do_update(), loop)
 
         try:
