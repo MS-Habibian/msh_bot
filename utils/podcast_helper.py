@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+import uuid
 import aiohttp
 import yt_dlp
 
@@ -62,10 +63,14 @@ async def download_podcast_async(url: str, output_dir: str, progress_callback=No
                 if asyncio.iscoroutinefunction(progress_callback):
                     asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), main_loop)
 
+    # ایجاد یک شناسه کوتاه و یکتا (8 کاراکتر) برای نام فایل
+    short_id = str(uuid.uuid4())[:8]
+
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': os.path.join(output_dir, 'podcast_%(id)s.%(ext)s'),
-        'cookiefile': 'cookie.txt', # استفاده از کوکی فایل در صورت نیاز
+        # استفاده از شناسه کوتاه به جای %(id)s برای جلوگیری از خطای نام طولانی
+        'outtmpl': os.path.join(output_dir, f'podcast_{short_id}.%(ext)s'),
+        'cookiefile': 'cookie.txt', # در صورت عدم نیاز می‌توانید این خط را حذف کنید
         'progress_hooks': [my_hook],
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -78,6 +83,7 @@ async def download_podcast_async(url: str, output_dir: str, progress_callback=No
             info = ydl.extract_info(url, download=True)
             return ydl.prepare_filename(info)
 
-    # اجرای عملیات دانلود در یک ترد جداگانه تا ربات بلاک نشود
+    # اجرای عملیات دانلود در یک ترد جداگانه
     filepath = await asyncio.to_thread(_download)
     return filepath
+
