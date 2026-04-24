@@ -1,8 +1,9 @@
+import asyncio
 import logging
 import os
 import time
 import aiohttp
-import aiofiles
+import yt_dlp
 
 
 logger = logging.getLogger(__name__)
@@ -46,33 +47,37 @@ async def get_podcast_url_async(track_id):
         logger.error(f"Error fetching url: {e}")
     return None
 
-async def download_podcast_async(url, output_dir, progress_callback=None):
-    # اضافه کردن هدر مرورگر واقعی برای جلوگیری از خطای 403
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive'
+async def download_podcast_async(url: str, output_dir: str, progress_callback=None) -> str:
+    os.makedirs(output_dir, exist_ok=True)
+    last_update_time = [0.0]
+    main_loop = asyncio.get_running_loop()
+
+    def my_hook(d):
+        if d['status'] == 'downloading' and progress_callback:
+            current_time = time.time()
+            if current_time - last_update_time[0] > 3:  # آپدیت هر 3 ثانیه
+                last_update_time[0] = current_time
+                downloaded = d.get('downloaded_bytes', 0)
+                total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                if asyncio.iscoroutinefunction(progress_callback):
+                    asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), main_loop)
+
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': os.path.join(output_dir, 'podcast_%(id)s.%(ext)s'),
+        'cookiefile': 'cookie.txt', # استفاده از کوکی فایل در صورت نیاز
+        'progress_hooks': [my_hook],
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': '*/*'
+        }
     }
 
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.get(url, allow_redirects=True) as response:
-            response.raise_for_status()  # بررسی وجود خطا
-            
-            total_size = int(response.headers.get('content-length', 0))
-            
-            # ایجاد یک نام فایل یکتا
-            file_name = f"podcast_{int(time.time())}.mp3"
-            file_path = os.path.join(output_dir, file_name)
-            
-            downloaded_size = 0
-            
-            async with aiofiles.open(file_path, 'wb') as f:
-                async for chunk in response.content.iter_chunked(8192):
-                    await f.write(chunk)
-                    downloaded_size += len(chunk)
-                    
-                    if progress_callback:
-                        await progress_callback(downloaded_size, total_size)
-                        
-            return file_path
+    def _download():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info)
+
+    # اجرای عملیات دانلود در یک ترد جداگانه تا ربات بلاک نشود
+    filepath = await asyncio.to_thread(_download)
+    return filepath
