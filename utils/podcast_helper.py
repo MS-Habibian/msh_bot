@@ -52,7 +52,8 @@ logger = logging.getLogger(__name__)
 
 async def search_podcast_async(query, limit=5, offset=0):
     print('offsett: ', offset)
-    url = f"https://itunes.apple.com/search?term={query}&entity=podcastEpisode&limit={limit}&offset={offset}"
+    # Fetch a large limit (up to 200) since iTunes doesn't support 'offset' natively
+    url = f"https://itunes.apple.com/search?term={query}&entity=podcastEpisode&limit=200"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
@@ -63,10 +64,11 @@ async def search_podcast_async(query, limit=5, offset=0):
                         'id': item.get('trackId'),
                         'title': item.get('trackName', 'Unknown Title'),
                         'podcast_name': item.get('collectionName', 'Unknown Podcast'),
-                        # لینک دانلود را همینجا در مرحله سرچ ذخیره می‌کنیم تا مشکل دانلود حل شود
                         'audio_url': item.get('episodeUrl') 
                     })
-                return results
+                
+                # Manually apply the offset and limit
+                return results[offset : offset + limit]
     except Exception as e:
         logger.error(f"Search error: {e}")
         return []
