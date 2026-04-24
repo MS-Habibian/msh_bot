@@ -1,7 +1,7 @@
 import logging
 import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from utils.podcast_helper import search_podcast_async, get_podcast_url_async, download_podcast_async
+from podcast_helper import search_podcast_async, get_podcast_url_async, download_podcast_async
 import time
 
 logger = logging.getLogger(__name__)
@@ -12,9 +12,10 @@ async def pod_command(update, context):
         await update.message.reply_text("لطفاً نام پادکست یا موضوع را وارد کنید. مثال:\n/podcast channel b")
         return
 
-    await send_podcast_results(update.message, query, offset=0)
+    # ارسال context به تابع
+    await send_podcast_results(update.message, context, query, offset=0)
 
-async def send_podcast_results(message, query, offset):
+async def send_podcast_results(message, context, query, offset):
     loading_msg = await message.reply_text(f"در حال جستجو برای: {query} (نتایج {offset+1} تا {offset+5})...")
     
     results = await search_podcast_async(query, limit=5, offset=offset)
@@ -23,24 +24,21 @@ async def send_podcast_results(message, query, offset):
         await loading_msg.edit_text("❌ پادکستی با این نام یافت نشد.")
         return
 
-    # ذخیره نتایج در context برای دسترسی سریع به لینک‌ها در زمان دانلود
-    if not hasattr(message.bot, 'podcast_cache'):
-        message.bot.podcast_cache = {}
+    # استفاده از bot_data برای ذخیره کش به جای message.bot
+    if 'podcast_cache' not in context.bot_data:
+        context.bot_data['podcast_cache'] = {}
 
     text = f"🎧 نتایج جستجو برای: {query}\n\n"
     keyboard = []
     
     for i, res in enumerate(results, 1):
         text += f"{i}. {res['title']}\n🎙 {res['podcast_name']}\n\n"
-        # کلید کیبورد برای دانلود
         keyboard.append([InlineKeyboardButton(f"📥 دانلود شماره {i}", callback_data=f"poddl:{res['id']}")])
         
-        # کش کردن لینک تا نیازی به lookup دوباره نباشد (رفع مشکل پیدا نشدن لینک)
+        # ذخیره لینک در کش
         if res['audio_url']:
-            message.bot.podcast_cache[str(res['id'])] = res['audio_url']
+            context.bot_data['podcast_cache'][str(res['id'])] = res['audio_url']
 
-    # دکمه نمایش بیشتر (Next Page)
-    # محدود کردن طول کوئری در کال‌بک دیتا تا به لیمیت 64 بایت تلگرام نخورد
     safe_query = query[:20] 
     keyboard.append([InlineKeyboardButton("⬇️ نتایج بعدی", callback_data=f"podmore:{offset+5}:{safe_query}")])
 
@@ -52,23 +50,20 @@ async def handle_pod_callback(update, context):
     data = query.data
 
     if data.startswith("podmore:"):
-        # مدیریت دکمه نتایج بعدی
         parts = data.split(':', 2)
         offset = int(parts[1])
         search_query = parts[2]
         
-        # فراخوانی مجدد برای ارسال پیام جدید شامل 5 نتیجه بعدی
-        await send_podcast_results(query.message, search_query, offset)
+        # ارسال context به تابع در فراخوانی مجدد
+        await send_podcast_results(query.message, context, search_query, offset)
 
     elif data.startswith("poddl:"):
-        # مدیریت دکمه دانلود
         track_id = data.split(":")[1]
         
-        # ابتدا بررسی می‌کنیم لینک در کش موجود است یا خیر
-        audio_url = getattr(context.bot, 'podcast_cache', {}).get(track_id)
+        # خواندن از کش با استفاده از bot_data
+        audio_url = context.bot_data.get('podcast_cache', {}).get(track_id)
         
         if not audio_url:
-            # اگر در کش نبود، تلاش برای گرفتن لینک از API
             audio_url = await get_podcast_url_async(track_id)
 
         if not audio_url:
@@ -104,7 +99,7 @@ async def handle_pod_callback(update, context):
                 performer="Podcast Bot"
             )
             await status_msg.delete()
-            os.remove(file_path) # پاک کردن فایل محلی پس از ارسال
+            os.remove(file_path)
         except Exception as e:
             logger.error(f"Download/Send error: {e}")
             await status_msg.edit_text("❌ خطایی در طول دانلود یا ارسال رخ داد.")
