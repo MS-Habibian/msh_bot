@@ -135,8 +135,8 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
 
     for i, res in enumerate(results, start_num):
         text += f"*{i}. {res['title']}*\n"
-        text += f"👤 نویسندگان: {res['authors']}\n"
-        text += f"📅 سال: {res['year']}\n"
+        text += f"👤 نویسندگان:  {res['authors']}\n"
+        text += f"📅 سال:  {res['year']}\n"
         
         if res.get('pdf_link'):
             text += "✅ فایل PDF موجود است\n\n"
