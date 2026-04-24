@@ -105,20 +105,22 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
     download_buttons = []
 
     for i, res in enumerate(results, start_num):
-        text += f"*{i}. {res['title']}*\n"
-        text += f"👤 نویسندگان: {res['authors']}\n"
-        text += f"📅 سال: {res['year']}\n"
-        
-        if res.get('doi'):
-            text += "✅ دانلود فایل از sci hub\n\n"
-            callback_data = f"paper_dl_doi|{res['doi']}"
-            download_buttons.append(InlineKeyboardButton(str(i), callback_data=callback_data))
-        elif res.get('pdf_link'):
-            text += "✅ فایل PDF موجود است\n\n"
-            callback_data = f"paper_pdf|{res['pdf_link'][:50]}"
-            download_buttons.append(InlineKeyboardButton(str(i), callback_data=callback_data))
-        else:
-            text += "❌ فایل PDF موجود نیست\n\n"
+            text += f"📄 **{i}. {res['title']}**\n"
+            text += f"👤 نویسندگان: {res['authors']}\n"
+            text += f"📅 سال: {res['year']}\n"
+            
+            if res.get('doi'):
+                text += "✅ دانلود از Sci-Hub\n\n"
+                # Use DOI instead of a broken 50-character PDF link
+                callback_data = f"paper_dl_doi|{res['doi']}"
+                download_buttons.append(InlineKeyboardButton(str(i), callback_data=callback_data))
+            elif res.get('pdf_link'):
+                text += "✅ لینک مستقیم موجود است\n\n"
+                # Pass the link directly (Be careful, Telegram limits callback_data to 64 bytes)
+                callback_data = f"paper_pdf|{res['pdf_link'][:54]}"
+                download_buttons.append(InlineKeyboardButton(str(i), callback_data=callback_data))
+            else:
+                text += "❌ فایل موجود نیست\n\n"
 
     keyboard = []
     if download_buttons:
@@ -133,34 +135,50 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     
-    # Extract DOI from the prefix (Assuming your callback data is now something like "paper_dl|{doi}")
-    _, doi = query.data.split("|", 1)
-    
-    await context.bot.send_message(chat_id=query.message.chat_id, text="در حال دانلود مقاله از Sci-Hub...")
-    
+    data = query.data
     download_dir = f"downloads/{uuid.uuid4()}"
     os.makedirs(download_dir, exist_ok=True)
     
-    # scidownl needs an exact file path to save the PDF
-    out_path = os.path.join(download_dir, "paper.pdf")
-    
     try:
-        # Run the blocking scihub_download function in a separate thread
-        await asyncio.to_thread(scihub_download, doi, paper_type="doi", out=out_path)
-        
-        # Check if Sci-Hub actually returned a file
-        if not os.path.exists(out_path):
-            raise Exception("مقاله در Sci-Hub یافت نشد.")
+        if data.startswith("paper_dl_doi|"):
+            # 1. Handle Sci-Hub DOI downloads
+            _, doi = data.split("|", 1)
+            await query.edit_message_text(f"در حال دانلود مقاله با DOI: {doi} از Sci-Hub...")
             
-        # Split and send using the returned file path
-        parts = split_file(out_path)
+            out_path = os.path.join(download_dir, "paper.pdf")
+            
+            # Run scidownl in a separate thread so it doesn't block the bot
+            await asyncio.to_thread(scihub_download, doi, paper_type="doi", out=out_path)
+            
+            if not os.path.exists(out_path):
+                raise Exception("مقاله در Sci-Hub یافت نشد.")
+            
+            downloaded_file = out_path
+            
+        elif data.startswith("paper_pdf|"):
+            # 2. Handle Direct PDF Link downloads (Your old working logic)
+            _, pdf_url = data.split("|", 1)
+            await query.edit_message_text("در حال دانلود مقاله از لینک مستقیم...")
+            
+            downloaded_file = await download_file_async(pdf_url, download_dir)
+            
+        else:
+            await query.edit_message_text("خطای ناشناخته در نوع دانلود.")
+            return
+            
+        # 3. Common logic for splitting and sending (Your old working logic)
+        await query.edit_message_text("دانلود با موفقیت انجام شد، در حال ارسال فایل...")
+        parts = split_file(downloaded_file)
+        
         for part in parts:
             with open(part, 'rb') as f:
                 await context.bot.send_document(chat_id=query.message.chat_id, document=f)
                 
     except Exception as e:
         await context.bot.send_message(chat_id=query.message.chat_id, text=f"خطا در دانلود مقاله: {e}")
+        
     finally:
+        # Cleanup
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir)
     # query = update.callback_query
