@@ -10,13 +10,50 @@ import time
 logger = logging.getLogger(__name__)
 
 async def pod_command(update, context):
-    query = ' '.join(context.args)
-    if not query:
-        await update.message.reply_text("لطفاً نام پادکست یا موضوع را وارد کنید. مثال:\n/podcast channel b")
-        return
-
-    # ارسال context به تابع
-    await send_podcast_results(update.message, context, query, offset=0)
+    """
+    کنترل‌کننده دستور اصلی پادکست
+    حالت اول (جستجوی کلی): /podcast space
+    حالت دوم (جستجو در کانال): /podcast TED Radio Hour | space
+    حالت سوم (جدیدترین‌های کانال): /podcast TED Radio Hour |
+    """
+    try:
+        # دریافت متن بعد از دستور
+        user_input = update.message.text.split(maxsplit=1)[1]
+        
+        # بررسی وجود علامت | برای تشخیص کانال
+        if '|' in user_input:
+            parts = user_input.split('|', 1)
+            channel_name = parts[0].strip()
+            search_term = parts[1].strip()
+            
+            if search_term:
+                # کاربر هم کانال داده و هم عبارت جستجو
+                query = f"{channel_name} {search_term}"
+                msg = f"🔍 در حال جستجوی «{search_term}» در پادکست «{channel_name}»..."
+            else:
+                # کاربر فقط نام کانال را داده و بعد از | چیزی ننوشته (جدیدترین قسمت‌ها)
+                query = channel_name
+                msg = f"🎧 در حال دریافت جدیدترین قسمت‌های پادکست «{channel_name}»..."
+        else:
+            # جستجوی عادی
+            query = user_input.strip()
+            msg = f"🔍 در حال جستجوی پادکست برای «{query}»..."
+            
+        await update.message.reply_text(msg)
+        await send_podcast_results(update, context, query, offset=0)
+        
+    except IndexError:
+        help_text = (
+            "⚠️ لطفا یک عبارت برای جستجو وارد کنید.\n\n"
+            "📖 **راهنمای استفاده:**\n"
+            "🔹 جستجوی کلی:\n"
+            "`/podcast <عبارت>`\n"
+            "🔹 جستجو در کانال خاص:\n"
+            "`/podcast <نام کانال> | <عبارت>`\n"
+            "🔹 دریافت جدیدترین قسمت‌های یک کانال:\n"
+            "`/podcast <نام کانال> |`"
+        )
+        await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def send_podcast_results(message, context, query, offset):
     loading_msg = await message.reply_text(f"در حال جستجو برای: {query} (نتایج {offset+1} تا {offset+5})...")
