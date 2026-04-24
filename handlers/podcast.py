@@ -40,16 +40,11 @@ async def send_podcast_results(message, context, search_query, offset=0):
     for i, pod in enumerate(current_results):
         track_name = pod.get('trackName', 'Unknown')
         artist_name = pod.get('artistName', 'Unknown')
-        
-        # Fallback to collectionId if trackId is missing
-        track_id = pod.get('trackId') or pod.get('collectionId')
-        
-        # Skip this result if there is no valid ID
-        if not track_id:
-            continue
+        track_id = pod.get('trackId')
         
         text += f"**{i + 1 + offset}.** {track_name}\n👤 {artist_name}\n\n"
         
+        # Save to cache if you are using one
         context.bot_data.setdefault('podcast_cache', {})[str(track_id)] = pod.get('feedUrl')
         
         keyboard.append([InlineKeyboardButton(f"📥 دانلود شماره {i + 1 + offset}", callback_data=f"poddl:{track_id}")])
