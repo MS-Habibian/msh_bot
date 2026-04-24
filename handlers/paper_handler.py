@@ -176,7 +176,17 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
         parts = split_file(downloaded_file)
         for part in parts:
             with open(part, 'rb') as f:
-                await context.bot.send_document(chat_id=query.message.chat_id, document=f)
+                # Get the base file name
+                file_name = os.path.basename(part)
+                # Ensure it has a .pdf extension so mobile devices recognize it
+                if not file_name.lower().endswith('.pdf'):
+                    file_name += '.pdf'
+                
+                await context.bot.send_document(
+                    chat_id=query.message.chat_id, 
+                    document=f,
+                    filename=file_name  # Force the filename with extension
+                )
                 
     except Exception as e:
         await context.bot.send_message(chat_id=query.message.chat_id, text=f"خطا در دانلود مقاله: {e}")
