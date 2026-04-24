@@ -2,6 +2,8 @@ import logging
 import os
 import time
 import aiohttp
+import aiofiles
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,31 +46,33 @@ async def get_podcast_url_async(track_id):
         logger.error(f"Error fetching url: {e}")
     return None
 
-async def download_podcast_async(url: str, output_dir: str, progress_callback=None) -> str:
-    """دانلود فایل صوتی و گزارش پیشرفت (مشابه یوتیوب ولی کاملا Async)"""
-    os.makedirs(output_dir, exist_ok=True)
-    filename = url.split('/')[-1].split('?')[0] or f"podcast_{int(time.time())}.mp3"
-    filepath = os.path.join(output_dir, filename)
+async def download_podcast_async(url, output_dir, progress_callback=None):
+    # اضافه کردن هدر مرورگر واقعی برای جلوگیری از خطای 403
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive'
+    }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            response.raise_for_status()
-            total_bytes = int(response.headers.get('content-length', 0))
-            downloaded_bytes = 0
-            last_update_time = time.time()
-
-            with open(filepath, 'wb') as f:
-                async for chunk in response.content.iter_chunked(1024 * 1024):  # دانلود در تکه های 1 مگابایتی
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    downloaded_bytes += len(chunk)
-
-                    current_time = time.time()
-                    # آپدیت وضعیت هر 3 ثانیه (همانند منطق youtube_helper)
-                    if progress_callback and (current_time - last_update_time > 3):
-                        last_update_time = current_time
-                        # چون خود aiohttp غیرهمگام است، نیازی به threadsafe نداریم
-                        await progress_callback(downloaded_bytes, total_bytes)
-
-    return filepath
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url, allow_redirects=True) as response:
+            response.raise_for_status()  # بررسی وجود خطا
+            
+            total_size = int(response.headers.get('content-length', 0))
+            
+            # ایجاد یک نام فایل یکتا
+            file_name = f"podcast_{int(time.time())}.mp3"
+            file_path = os.path.join(output_dir, file_name)
+            
+            downloaded_size = 0
+            
+            async with aiofiles.open(file_path, 'wb') as f:
+                async for chunk in response.content.iter_chunked(8192):
+                    await f.write(chunk)
+                    downloaded_size += len(chunk)
+                    
+                    if progress_callback:
+                        await progress_callback(downloaded_size, total_size)
+                        
+            return file_path
