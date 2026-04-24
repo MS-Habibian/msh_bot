@@ -1,39 +1,47 @@
+import logging
 import os
 import time
 import aiohttp
 
-async def search_podcast_async(query: str, limit: int = 5) -> list:
-    """جستجوی اپیزودهای پادکست در iTunes"""
-    url = f"https://itunes.apple.com/search?media=podcast&entity=podcastEpisode&term={query}&limit={limit}"
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            data = await response.json(content_type=None)
-            results = []
-            
-            for item in data.get('results', []):
-                # تبدیل میلی‌ثانیه به فرمت دقیقه:ثانیه
-                millis = item.get('trackTimeMillis', 0)
-                seconds = (millis / 1000) % 60
-                minutes = (millis / (1000 * 60)) % 60
-                duration_str = f"{int(minutes):02d}:{int(seconds):02d}"
+logger = logging.getLogger(__name__)
 
-                results.append({
-                    'id': str(item.get('trackId')),
-                    'title': item.get('trackName', 'عنوان نامشخص'),
-                    'duration': duration_str,
-                    'audio_url': item.get('episodeUrl')
-                })
-            return results
+async def search_podcast_async(query, limit=5, offset=0):
+    url = f"https://itunes.apple.com/search?term={query}&entity=podcastEpisode&limit={limit}&offset={offset}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                data = await response.json(content_type=None)
+                results = []
+                for item in data.get('results', []):
+                    results.append({
+                        'id': item.get('trackId'),
+                        'title': item.get('trackName', 'Unknown Title'),
+                        'podcast_name': item.get('collectionName', 'Unknown Podcast'),
+                        # لینک دانلود را همینجا در مرحله سرچ ذخیره می‌کنیم تا مشکل دانلود حل شود
+                        'audio_url': item.get('episodeUrl') 
+                    })
+                return results
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        return []
 
-async def get_podcast_url_async(track_id: str) -> str:
-    """پیدا کردن لینک مستقیم دانلود بر اساس آیدی اپیزود"""
+async def get_podcast_url_async(track_id):
+    # گاهی اوقات lookup آیتونز episodeUrl را برنمی‌گرداند.
     url = f"https://itunes.apple.com/lookup?id={track_id}&entity=podcastEpisode"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            data = await response.json(content_type=None)
-            if data.get('results'):
-                return data['results'][0].get('episodeUrl')
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                data = await response.json(content_type=None)
+                if data.get('results'):
+                    episode_url = data['results'][0].get('episodeUrl')
+                    if episode_url:
+                        return episode_url
+                    else:
+                        logger.error(f"No episodeUrl in iTunes data! Data: {data['results'][0]}")
+                else:
+                    logger.error(f"Empty results for track {track_id}. Data: {data}")
+    except Exception as e:
+        logger.error(f"Error fetching url: {e}")
     return None
 
 async def download_podcast_async(url: str, output_dir: str, progress_callback=None) -> str:
