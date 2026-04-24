@@ -1,4 +1,5 @@
 
+import asyncio
 import logging
 import os
 import uuid
@@ -185,39 +186,39 @@ async def get_libgen_download_link(doi):
     """جستجوی مقاله در Libgen بر اساس DOI و استخراج لینک مستقیم PDF با لاگینگ"""
     logger.info(f"🔍 Starting Libgen search for DOI: {doi}")
     
-    # روش 1: دسترسی مستقیم به صفحه دانلود از طریق libgen.lc (سریع‌تر و پایدارتر)
-    direct_mirror_url = f"http://libgen.lc/scimag/ads.php?doi={doi}"
+    # Use HTTPS and .lc mirror
+    direct_mirror_url = f"https://libgen.lc/scimag/ads.php?doi={doi}"
     
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         try:
             logger.info(f"🌐 Accessing direct mirror: {direct_mirror_url}")
-            async with session.get(direct_mirror_url, timeout=15) as response:
+            async with session.get(direct_mirror_url, timeout=20) as response:
                 if response.status == 200:
                     html = await response.text()
                     soup = BeautifulSoup(html, 'html.parser')
                     
-                    # پیدا کردن لینک GET یا لینک دانلود مستقیم
                     download_tag = soup.select_one('a[href^="get.php"]') or soup.select_one('#download h2 a')
                     
                     if download_tag and download_tag.has_attr('href'):
                         link = download_tag['href']
-                        # اگر لینک نسبی است، آن را کامل کنید
                         if link.startswith('get.php'):
-                            link = f"http://libgen.lc/scimag/{link}"
+                            link = f"https://libgen.lc/scimag/{link}"
                         logger.info(f"✅ Found download link: {link}")
                         return link
                     else:
-                        logger.warning("⚠️ Accessed direct mirror but couldn't find download link tag in HTML.")
+                        logger.warning("⚠️ Direct mirror loaded but no download link found (Paper might not be in Libgen).")
                 else:
                     logger.warning(f"⚠️ Direct mirror returned HTTP status: {response.status}")
+        except asyncio.TimeoutError:
+            logger.error("❌ Direct mirror timed out.")
         except Exception as e:
             logger.error(f"❌ Error accessing direct mirror: {e}")
 
-        # روش 2: جستجو در صفحه اصلی لیبجن (اگر روش اول کار نکرد)
-        search_url = f"http://libgen.is/scimag/?q={doi}"
+        # Fallback using a more stable domain (libgen.rs) and a longer timeout
+        search_url = f"https://libgen.rs/scimag/?q={doi}"
         try:
             logger.info(f"🌐 Fallback searching main Libgen: {search_url}")
-            async with session.get(search_url, timeout=15) as response:
+            async with session.get(search_url, timeout=30) as response:
                 if response.status != 200:
                     logger.error(f"❌ Main Libgen search returned HTTP status: {response.status}")
                     return None
@@ -225,17 +226,18 @@ async def get_libgen_download_link(doi):
                 html = await response.text()
                 soup = BeautifulSoup(html, 'html.parser')
                 
-                # پیدا کردن لینک میرورها در جدول نتایج
-                mirror_link_tag = soup.select_one('table.catalog a[href*="libgen.lc"], table.catalog a[href*="library.lol"]')
-                if not mirror_link_tag:
-                    logger.error("❌ Could not find any mirror links in search results table.")
+                mirror_link_tag = soup.select_one('table.catalog a[href*="libgen.lc"], table.catalog a[href*="library.lol"], ul.record_mirrors li a')
+                if not mirror_link_tag or not mirror_link_tag.has_attr('href'):
+                    logger.error("❌ Could not find any mirror links in search results table. Paper is likely not on Libgen.")
                     return None
                     
                 mirror_url = mirror_link_tag['href']
+                if mirror_url.startswith('//'):
+                    mirror_url = f"https:{mirror_url}"
                 logger.info(f"🔗 Found mirror URL from search: {mirror_url}")
 
-            # رفتن به صفحه میرور استخراج شده
-            async with session.get(mirror_url, timeout=15) as response:
+            # Access the mirror page
+            async with session.get(mirror_url, timeout=30) as response:
                 if response.status != 200:
                     logger.error(f"❌ Fallback mirror returned HTTP status: {response.status}")
                     return None
@@ -246,15 +248,21 @@ async def get_libgen_download_link(doi):
                 download_tag = mirror_soup.select_one('a[href^="get.php"]') or mirror_soup.select_one('#download h2 a')
                 if download_tag and download_tag.has_attr('href'):
                     link = download_tag['href']
-                    if link.startswith('get.php') and 'libgen.lc' in mirror_url:
-                        link = f"http://libgen.lc/scimag/{link}"
+                    if link.startswith('get.php'):
+                        # Extract the base domain from the mirror_url dynamically
+                        from urllib.parse import urlparse
+                        parsed_uri = urlparse(mirror_url)
+                        base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}"
+                        link = f"{base_url}/scimag/{link}"
                     logger.info(f"✅ Found download link via fallback: {link}")
                     return link
                 else:
                     logger.error("❌ Could not find download tag on fallback mirror.")
                     
+        except asyncio.TimeoutError:
+            logger.error("❌ Fallback search timed out (Server might be blocking the connection or it's too slow).")
         except Exception as e:
-            logger.error(f"❌ Error in fallback search: {e}", exc_info=True)
+            logger.error(f"❌ Error in fallback search: {e}")
 
     return None
 
