@@ -1,89 +1,54 @@
-import asyncio
-import logging
 import os
-import time
-import uuid
+import asyncio
 import aiohttp
 import yt_dlp
+from urllib.parse import quote
 
-
-logger = logging.getLogger(__name__)
-
-async def search_podcast_async(query, limit=5, offset=0):
-    url = f"https://itunes.apple.com/search?term={query}&entity=podcastEpisode&limit={limit}&offset={offset}"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                data = await response.json(content_type=None)
-                results = []
-                for item in data.get('results', []):
+async def search_podcast_async(query: str, limit: int = 50) -> list:
+    """جستجوی پادکست در iTunes و دریافت ۵۰ نتیجه برای صفحه‌بندی محلی"""
+    url = f"https://itunes.apple.com/search?media=podcast&term={quote(query)}&limit={limit}"
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status != 200:
+                raise Exception(f"خطای API: {response.status}")
+            
+            data = await response.json(content_type=None)
+            results = []
+            for item in data.get('results', []):
+                # اگر لینک مستقیم اپیزود وجود نداشت، از لینک فید (در صورت وجود) استفاده می‌کنیم
+                ep_url = item.get('episodeUrl') or item.get('feedUrl')
+                if ep_url:
                     results.append({
-                        'id': item.get('trackId'),
-                        'title': item.get('trackName', 'Unknown Title'),
-                        'podcast_name': item.get('collectionName', 'Unknown Podcast'),
-                        # لینک دانلود را همینجا در مرحله سرچ ذخیره می‌کنیم تا مشکل دانلود حل شود
-                        'audio_url': item.get('episodeUrl') 
+                        'id': str(item.get('trackId', item.get('collectionId', ''))),
+                        'title': item.get('trackName', item.get('collectionName', 'نامشخص')),
+                        'artist': item.get('artistName', 'نامشخص'),
+                        'url': ep_url
                     })
-                return results
-    except Exception as e:
-        logger.error(f"Search error: {e}")
-        return []
+            return results
 
-async def get_podcast_url_async(track_id):
-    # گاهی اوقات lookup آیتونز episodeUrl را برنمی‌گرداند.
-    url = f"https://itunes.apple.com/lookup?id={track_id}&entity=podcastEpisode"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                data = await response.json(content_type=None)
-                if data.get('results'):
-                    episode_url = data['results'][0].get('episodeUrl')
-                    if episode_url:
-                        return episode_url
-                    else:
-                        logger.error(f"No episodeUrl in iTunes data! Data: {data['results'][0]}")
-                else:
-                    logger.error(f"Empty results for track {track_id}. Data: {data}")
-    except Exception as e:
-        logger.error(f"Error fetching url: {e}")
-    return None
-
-async def download_podcast_async(url: str, output_dir: str, progress_callback=None) -> str:
-    os.makedirs(output_dir, exist_ok=True)
-    last_update_time = [0.0]
-    main_loop = asyncio.get_running_loop()
-
+async def download_podcast_async(url: str, dest_folder: str, progress_callback=None) -> str:
+    """دانلود پادکست با استفاده از yt-dlp برای جلوگیری از خطای 403"""
+    os.makedirs(dest_folder, exist_ok=True)
+    
     def my_hook(d):
         if d['status'] == 'downloading' and progress_callback:
-            current_time = time.time()
-            if current_time - last_update_time[0] > 3:  # آپدیت هر 3 ثانیه
-                last_update_time[0] = current_time
-                downloaded = d.get('downloaded_bytes', 0)
-                total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                if asyncio.iscoroutinefunction(progress_callback):
-                    asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), main_loop)
-
-    # ایجاد یک شناسه کوتاه و یکتا (8 کاراکتر) برای نام فایل
-    short_id = str(uuid.uuid4())[:8]
+            downloaded = d.get('downloaded_bytes', 0)
+            total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
+            # فراخوانی تابع آپدیت تلگرام در event loop اصلی
+            asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), asyncio.get_running_loop())
 
     ydl_opts = {
         'format': 'bestaudio/best',
-        # استفاده از شناسه کوتاه به جای %(id)s برای جلوگیری از خطای نام طولانی
-        'outtmpl': os.path.join(output_dir, f'podcast_{short_id}.%(ext)s'),
-        'cookiefile': 'cookie.txt', # در صورت عدم نیاز می‌توانید این خط را حذف کنید
-        'progress_hooks': [my_hook],
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': '*/*'
-        }
+        'outtmpl': os.path.join(dest_folder, 'podcast_%(id)s.%(ext)s'),
+        'quiet': True,
+        'no_warnings': True,
+        'progress_hooks': [my_hook]
     }
 
-    def _download():
+    def extract_and_download():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             return ydl.prepare_filename(info)
 
-    # اجرای عملیات دانلود در یک ترد جداگانه
-    filepath = await asyncio.to_thread(_download)
-    return filepath
-
+    return await asyncio.to_thread(extract_and_download)

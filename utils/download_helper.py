@@ -11,63 +11,15 @@ def format_size(bytes_size: int) -> str:
     """Converts bytes to a readable format (MB)."""
     return f"{bytes_size / (1024 * 1024):.2f} MB"
 
-
-# async def download_file_async(url, dest_folder, progress_callback=None):
-#     os.makedirs(dest_folder, exist_ok=True)
-
-#     async with aiohttp.ClientSession() as session:
-#         async with session.get(url) as response:
-#             response.raise_for_status()
-
-#             parsed_url = urllib.parse.urlparse(url)
-#             filename = os.path.basename(urllib.parse.unquote(parsed_url.path)) or "downloaded_file.dat"
-#             filepath = os.path.join(dest_folder, filename)
-            
-#             total_size = int(response.headers.get("Content-Length", 0))
-#             if total_size > 5242880000:
-#                 raise ValueError(f"File is too large ({format_size(total_size)}). Telegram limit is 5 GB.")
-
-#             downloaded_size = 0
-#             last_update_time = time.time()
-
-#             with open(filepath, "wb") as f:
-#                 async for chunk in response.content.iter_chunked(8192):
-#                     f.write(chunk)
-#                     downloaded_size += len(chunk)
-                    
-#                     now = time.time()
-#                     if now - last_update_time > 4:
-#                         if progress_callback:
-#                             await progress_callback(downloaded_size, total_size)
-#                         last_update_time = now
-#             return filepath
 async def download_file_async(url, dest_folder, progress_callback=None):
     os.makedirs(dest_folder, exist_ok=True)
 
-    # 1. اصلاح خودکار لینک‌های ArXiv برای دانلود مستقیم PDF
-    if "arxiv.org/abs/" in url:
-        url = url.replace("arxiv.org/abs/", "arxiv.org/pdf/")
-        if not url.endswith(".pdf"):
-            url += ".pdf"
-
     async with aiohttp.ClientSession() as session:
-        # ممکن است برخی سایت‌ها نیاز به هدر User-Agent داشته باشند تا اجازه دانلود بدهند
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        async with session.get(url, headers=headers) as response:
+        async with session.get(url) as response:
             response.raise_for_status()
 
-            # 2. بررسی Content-Type برای جلوگیری از دانلود صفحات HTML به جای PDF
-            content_type = response.headers.get("Content-Type", "").lower()
-            if "text/html" in content_type:
-                raise ValueError("لینک OpenAlex به جای فایل PDF مستقیم، به یک صفحه وب ارجاع داده است.")
-
             parsed_url = urllib.parse.urlparse(url)
-            filename = os.path.basename(urllib.parse.unquote(parsed_url.path)) or "downloaded_article"
-            
-            # 3. اطمینان از داشتن پسوند .pdf
-            if not filename.lower().endswith('.pdf'):
-                filename += ".pdf"
-                
+            filename = os.path.basename(urllib.parse.unquote(parsed_url.path)) or "downloaded_file.dat"
             filepath = os.path.join(dest_folder, filename)
             
             total_size = int(response.headers.get("Content-Length", 0))
@@ -88,8 +40,6 @@ async def download_file_async(url, dest_folder, progress_callback=None):
                             await progress_callback(downloaded_size, total_size)
                         last_update_time = now
             return filepath
-
-
 
 def split_file(filepath, chunk_size=12 * 1024 * 1024):  # Default 19 MB chunks
     """Splits a file into binary chunks."""
