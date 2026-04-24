@@ -1,4 +1,5 @@
 
+import logging
 import os
 import uuid
 import shutil
@@ -173,36 +174,88 @@ async def fetch_and_save(url, filepath):
             return filepath, response.headers.get('Content-Type', '')
 
 
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+
 async def get_libgen_download_link(doi):
-    """جستجوی مقاله در Libgen بر اساس DOI و استخراج لینک مستقیم PDF"""
-    search_url = f"http://libgen.is/scimag/?q={doi}"
+    """جستجوی مقاله در Libgen بر اساس DOI و استخراج لینک مستقیم PDF با لاگینگ"""
+    logger.info(f"🔍 Starting Libgen search for DOI: {doi}")
+    
+    # روش 1: دسترسی مستقیم به صفحه دانلود از طریق libgen.lc (سریع‌تر و پایدارتر)
+    direct_mirror_url = f"http://libgen.lc/scimag/ads.php?doi={doi}"
     
     async with aiohttp.ClientSession(headers=HEADERS) as session:
-        # 1. جستجو در صفحه اصلی لیبجن
-        async with session.get(search_url, timeout=15) as response:
-            if response.status != 200:
-                return None
-            html = await response.text()
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # پیدا کردن لینک میرور (معمولا libgen.lc یا library.lol)
-            mirror_link_tag = soup.select_operator = soup.select_one('ul.record_mirrors li a')
-            if not mirror_link_tag:
-                return None
-            mirror_url = mirror_link_tag['href']
+        try:
+            logger.info(f"🌐 Accessing direct mirror: {direct_mirror_url}")
+            async with session.get(direct_mirror_url, timeout=15) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # پیدا کردن لینک GET یا لینک دانلود مستقیم
+                    download_tag = soup.select_one('a[href^="get.php"]') or soup.select_one('#download h2 a')
+                    
+                    if download_tag and download_tag.has_attr('href'):
+                        link = download_tag['href']
+                        # اگر لینک نسبی است، آن را کامل کنید
+                        if link.startswith('get.php'):
+                            link = f"http://libgen.lc/scimag/{link}"
+                        logger.info(f"✅ Found download link: {link}")
+                        return link
+                    else:
+                        logger.warning("⚠️ Accessed direct mirror but couldn't find download link tag in HTML.")
+                else:
+                    logger.warning(f"⚠️ Direct mirror returned HTTP status: {response.status}")
+        except Exception as e:
+            logger.error(f"❌ Error accessing direct mirror: {e}")
 
-        # 2. رفتن به صفحه میرور برای گرفتن لینک مستقیم
-        async with session.get(mirror_url, timeout=15) as response:
-            if response.status != 200:
-                return None
-            mirror_html = await response.text()
-            mirror_soup = BeautifulSoup(mirror_html, 'html.parser')
-            
-            # استخراج لینک دانلود (تگ a با متن GET یا لینک مستقیم با پسوند pdf)
-            download_tag = mirror_soup.select_one('#download h2 a')
-            if download_tag and download_tag.has_attr('href'):
-                return download_tag['href']
+        # روش 2: جستجو در صفحه اصلی لیبجن (اگر روش اول کار نکرد)
+        search_url = f"http://libgen.is/scimag/?q={doi}"
+        try:
+            logger.info(f"🌐 Fallback searching main Libgen: {search_url}")
+            async with session.get(search_url, timeout=15) as response:
+                if response.status != 200:
+                    logger.error(f"❌ Main Libgen search returned HTTP status: {response.status}")
+                    return None
+                    
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
                 
+                # پیدا کردن لینک میرورها در جدول نتایج
+                mirror_link_tag = soup.select_one('table.catalog a[href*="libgen.lc"], table.catalog a[href*="library.lol"]')
+                if not mirror_link_tag:
+                    logger.error("❌ Could not find any mirror links in search results table.")
+                    return None
+                    
+                mirror_url = mirror_link_tag['href']
+                logger.info(f"🔗 Found mirror URL from search: {mirror_url}")
+
+            # رفتن به صفحه میرور استخراج شده
+            async with session.get(mirror_url, timeout=15) as response:
+                if response.status != 200:
+                    logger.error(f"❌ Fallback mirror returned HTTP status: {response.status}")
+                    return None
+                    
+                mirror_html = await response.text()
+                mirror_soup = BeautifulSoup(mirror_html, 'html.parser')
+                
+                download_tag = mirror_soup.select_one('a[href^="get.php"]') or mirror_soup.select_one('#download h2 a')
+                if download_tag and download_tag.has_attr('href'):
+                    link = download_tag['href']
+                    if link.startswith('get.php') and 'libgen.lc' in mirror_url:
+                        link = f"http://libgen.lc/scimag/{link}"
+                    logger.info(f"✅ Found download link via fallback: {link}")
+                    return link
+                else:
+                    logger.error("❌ Could not find download tag on fallback mirror.")
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in fallback search: {e}", exc_info=True)
+
     return None
 
 async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -210,44 +263,56 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     
     _, doi = query.data.split("|", 1)
+    logger.info(f"📥 Received download request for DOI: {doi}")
     
-    status_msg = await context.bot.send_message(chat_id=query.message.chat_id, text="⏳ در حال جستجو در پایگاه Libgen...")
+    status_msg = await context.bot.send_message(chat_id=query.message.chat_id, text="⏳ در حال ارتباط با سرورهای Libgen...")
     
     download_dir = f"downloads/{uuid.uuid4()}"
     os.makedirs(download_dir, exist_ok=True)
-    temp_file = os.path.join(download_dir, f"{doi.replace('/', '_')}.pdf")
+    
+    # جایگزین کردن کاراکترهای غیرمجاز در نام فایل
+    safe_doi = doi.replace('/', '_').replace('\\', '_')
+    temp_file = os.path.join(download_dir, f"{safe_doi}.pdf")
     
     try:
-        # 1. پیدا کردن لینک مستقیم از لیبجن
+        # 1. پیدا کردن لینک مستقیم
         pdf_url = await get_libgen_download_link(doi)
         
         if not pdf_url:
-            await status_msg.edit_text(f"❌ مقاله در پایگاه Libgen یافت نشد.\nDOI: {doi}")
+            await status_msg.edit_text(f"❌ مقاله در پایگاه Libgen یافت نشد یا دسترسی مسدود است.\nDOI: {doi}")
             return
             
         await status_msg.edit_text("📥 لینک دانلود یافت شد. در حال دریافت فایل...")
+        logger.info(f"⬇️ Downloading PDF from {pdf_url} to {temp_file}")
         
         # 2. دانلود فایل PDF
         await fetch_and_save(pdf_url, temp_file)
         
         if not is_real_pdf(temp_file):
-            await status_msg.edit_text("⚠️ فایل دریافت شده PDF معتبر نیست.")
+            logger.warning(f"⚠️ Downloaded file is not a valid PDF for DOI: {doi}")
+            await status_msg.edit_text("⚠️ فایل دریافت شده نامعتبر است (احتمالاً صفحه کپچا یا خطا دریافت شده).")
             return
 
         # 3. ارسال فایل به کاربر
-        await status_msg.edit_text("📤 در حال آپلود...")
+        await status_msg.edit_text("📤 در حال آپلود به تلگرام...")
+        logger.info(f"📤 Uploading file to Telegram for DOI: {doi}")
+        
         parts = split_file(temp_file)
         for part in parts:
             with open(part, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=query.message.chat_id, 
                     document=f,
-                    filename=f"{doi.replace('/', '_')}.pdf"
+                    filename=f"{safe_doi}.pdf"
                 )
         await status_msg.delete()
+        logger.info(f"✅ Successfully sent PDF for DOI: {doi}")
                 
     except Exception as e:
-        await status_msg.edit_text(f"❌ خطا در دریافت مقاله:\n{str(e)[:100]}")
+        # چاپ خطای کامل در کنسول
+        logger.error(f"❌ Critical error in paper_download_callback: {e}", exc_info=True)
+        await status_msg.edit_text(f"❌ خطا در دریافت مقاله:\nلطفاً چند دقیقه دیگر امتحان کنید.")
     finally:
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir)
+            logger.info(f"🧹 Cleaned up temporary directory: {download_dir}")
