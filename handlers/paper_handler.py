@@ -136,51 +136,44 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     
     data = query.data
+    await context.bot.send_message(chat_id=query.message.chat_id, text="در حال پردازش و دانلود مقاله... لطفاً کمی صبر کنید.")
+    
     download_dir = f"downloads/{uuid.uuid4()}"
     os.makedirs(download_dir, exist_ok=True)
     
     try:
+        downloaded_file = None
+        
+        # --- حالت اول: دانلود از Sci-Hub با استفاده از DOI ---
         if data.startswith("paper_dl_doi|"):
-            # 1. Handle Sci-Hub DOI downloads
             _, doi = data.split("|", 1)
-            await query.edit_message_text(f"در حال دانلود مقاله با DOI: {doi} از Sci-Hub...")
+            out_path = os.path.join(download_dir, f"{doi.replace('/', '_')}.pdf")
             
-            out_path = os.path.join(download_dir, "paper.pdf")
+            # آدرس سایت scihub حذف شده تا خود کتابخانه لینک سالم را پیدا کند
+            await asyncio.to_thread(scihub_download, doi, paper_type="doi", out=out_path)
             
-            # Run scidownl in a separate thread so it doesn't block the bot
-            await asyncio.to_thread(scihub_download, doi, paper_type="doi", out=out_path, scihub_url="https://sci-hub.ru") 
-            # Try different mirrors like https://sci-hub.se or https://sci-hub.st if .ru fails
-
-            
-            if not os.path.exists(out_path):
-                raise Exception("مقاله در Sci-Hub یافت نشد.")
-            
-            downloaded_file = out_path
-            
+            if os.path.exists(out_path):
+                downloaded_file = out_path
+            else:
+                raise Exception("فایل از Sci-Hub دریافت نشد.")
+                
+        # --- حالت دوم: دانلود مستقیم از لینک PDF ---
         elif data.startswith("paper_pdf|"):
-            # 2. Handle Direct PDF Link downloads (Your old working logic)
             _, pdf_url = data.split("|", 1)
-            await query.edit_message_text("در حال دانلود مقاله از لینک مستقیم...")
             
+            # هشدار: اگر لینک به خاطر محدودیت تلگرام ناقص شده باشد، اینجا خطا می‌دهد.
             downloaded_file = await download_file_async(pdf_url, download_dir)
             
-        else:
-            await query.edit_message_text("خطای ناشناخته در نوع دانلود.")
-            return
-            
-        # 3. Common logic for splitting and sending (Your old working logic)
-        await query.edit_message_text("دانلود با موفقیت انجام شد، در حال ارسال فایل...")
-        parts = split_file(downloaded_file)
-        
-        for part in parts:
-            with open(part, 'rb') as f:
-                await context.bot.send_document(chat_id=query.message.chat_id, document=f)
-                
+        # ارسال فایل دانلود شده
+        if downloaded_file and os.path.exists(downloaded_file):
+            parts = split_file(downloaded_file)
+            for part in parts:
+                with open(part, 'rb') as f:
+                    await context.bot.send_document(chat_id=query.message.chat_id, document=f)
+                    
     except Exception as e:
         await context.bot.send_message(chat_id=query.message.chat_id, text=f"خطا در دانلود مقاله: {e}")
-        
     finally:
-        # Cleanup
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir)
     # query = update.callback_query
