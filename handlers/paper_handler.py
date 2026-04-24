@@ -8,6 +8,7 @@ import aiohttp
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
+import urllib
 from utils.search_papers import search_openalex # Updated import
 from utils.download_helper import download_file_async, split_file
 
@@ -181,39 +182,53 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+SCRAPERAPI_KEY = os.getenv("SCRAPERAPI_KEY")
+
+
 async def get_scihub_download_link(doi):
-    """جستجوی مقاله در Sci-Hub بر اساس DOI با استخراج‌گر قوی‌تر"""
-    # List of common Sci-Hub domains
+    """جستجوی مقاله در Sci-Hub بر اساس DOI با استفاده از ScraperAPI"""
+    
+    if not SCRAPERAPI_KEY:
+        logger.error("❌ SCRAPERAPI_KEY environment variable is not set!")
+        return None
+
     scihub_mirrors = ["https://sci-hub.se", "https://sci-hub.st", "https://sci-hub.ru"]
     
-    async with aiohttp.ClientSession(headers=HEADERS) as session:
+    # We don't need custom headers here; ScraperAPI handles browser headers for us
+    async with aiohttp.ClientSession() as session:
         for base_url in scihub_mirrors:
-            search_url = f"{base_url}/{doi}"
+            target_url = f"{base_url}/{doi}"
+            
+            # URL-encode the Sci-Hub URL so it safely fits inside the API query parameters
+            encoded_url = urllib.parse.quote(target_url)
+            
+            # Build the ScraperAPI request URL
+            api_url = f"http://api.scraperapi.com?api_key={SCRAPERAPI_KEY}&url={encoded_url}"
+            
             try:
-                logger.info(f"🌐 Accessing Sci-Hub mirror: {search_url}")
-                async with session.get(search_url, timeout=20) as response:
+                logger.info(f"🌐 Accessing Sci-Hub via ScraperAPI: {target_url}")
+                
+                # Increased timeout to 45 seconds because scraping APIs take longer to solve captchas
+                async with session.get(api_url, timeout=45) as response:
                     if response.status == 200:
                         html = await response.text()
                         soup = BeautifulSoup(html, 'html.parser')
                         
                         pdf_url = None
                         
-                        # 1. Try finding embed or iframe (even without id="pdf")
                         pdf_container = soup.find('embed', id='pdf') or soup.find('iframe', id='pdf') or soup.find('embed')
                         if pdf_container and pdf_container.has_attr('src'):
                             pdf_url = pdf_container['src']
                         
-                        # 2. If not found, try finding the download button's onclick attribute
                         if not pdf_url:
                             button = soup.find('button', onclick=lambda x: x and 'location.href' in x)
                             if button:
-                                # Example: onclick="location.href='//domain.com/path/paper.pdf?download=true'"
                                 parts = button['onclick'].split("'")
                                 if len(parts) >= 3:
                                     pdf_url = parts[1]
 
                         if pdf_url:
-                            # Clean up the URL format
+                            # Fix relative URLs
                             if pdf_url.startswith('//'):
                                 pdf_url = f"https:{pdf_url}"
                             elif pdf_url.startswith('/'):
@@ -222,18 +237,17 @@ async def get_scihub_download_link(doi):
                             logger.info(f"✅ Found Sci-Hub download link: {pdf_url}")
                             return pdf_url
                         else:
-                            logger.warning(f"⚠️ Sci-Hub page loaded, but no PDF container found on {base_url}.")
+                            logger.warning(f"⚠️ Page loaded, but no PDF container found.")
                     else:
-                        logger.warning(f"⚠️ Sci-Hub mirror {base_url} returned HTTP status: {response.status}")
+                        logger.warning(f"⚠️ ScraperAPI returned HTTP status: {response.status}")
             
             except asyncio.TimeoutError:
-                logger.error(f"❌ Sci-Hub mirror {base_url} timed out.")
+                logger.error(f"❌ ScraperAPI request for {target_url} timed out.")
             except Exception as e:
-                logger.error(f"❌ Error accessing Sci-Hub mirror {base_url}: {e}")
+                logger.error(f"❌ Error accessing API for {target_url}: {e}")
                 
         logger.error("❌ Exhausted all Sci-Hub mirrors. Paper not found.")
         return None
-
 
 async def get_libgen_download_link(doi):
     """جستجوی مقاله در Libgen بر اساس DOI و استخراج لینک مستقیم PDF با لاگینگ"""
