@@ -56,6 +56,15 @@ async def pod_command(update, context):
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def send_podcast_results(message, context, query, offset):
+    if message.message:
+        message = message.message
+    elif message.callback_query:
+        message = message.callback_query.message
+    else:
+        return
+
+    # حالا می‌توانید از message.reply_text استفاده کنید
+    loading_msg = await message.reply_text(f"در حال جستجو برای: {query} (نتایج {offset+1} تا {offset+5})...")
     loading_msg = await message.reply_text(f"در حال جستجو برای: {query} (نتایج {offset+1} تا {offset+5})...")
     
     results = await search_podcast_async(query, limit=5, offset=offset)
