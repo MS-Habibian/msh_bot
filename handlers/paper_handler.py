@@ -109,11 +109,14 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
         text += f"👤 نویسندگان: {res['authors']}\n"
         text += f"📅 سال: {res['year']}\n"
         
-        if res.get('pdf_link'):
+        if res.get('doi'):
+            text += "✅ دانلود فایل از sci hub\n\n"
+            callback_data = f"paper_dl_doi|{res['doi']}"
+            download_buttons.append(InlineKeyboardButton(str(i), callback_data=callback_data))
+        elif res.get('pdf_link'):
             text += "✅ فایل PDF موجود است\n\n"
-            download_buttons.append(
-                InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
-            )
+            callback_data = f"paper_pdf|{res['pdf_link'][:50]}"
+            download_buttons.append(InlineKeyboardButton(str(i), callback_data=callback_data))
         else:
             text += "❌ فایل PDF موجود نیست\n\n"
 
