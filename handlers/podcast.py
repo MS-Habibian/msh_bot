@@ -1,7 +1,7 @@
 import logging
 import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from podcast_helper import search_podcast_async, get_podcast_url_async, download_podcast_async
+from utils.podcast_helper import search_podcast_async, get_podcast_url_async, download_podcast_async
 import time
 
 logger = logging.getLogger(__name__)
