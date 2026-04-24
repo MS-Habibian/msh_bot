@@ -1,11 +1,11 @@
 import logging
 import os
 import uuid
+import time
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from handlers.downloader import cleanup_folder_job
 from utils.download_helper import split_media_playable
 from utils.podcast_helper import search_podcast_async, get_podcast_url_async, download_podcast_async
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -27,20 +27,18 @@ async def pod_command(update, context):
             search_term = parts[1].strip()
             
             if search_term:
-                # کاربر هم کانال داده و هم عبارت جستجو
                 query = f"{channel_name} {search_term}"
                 msg = f"🔍 در حال جستجوی «{search_term}» در پادکست «{channel_name}»..."
             else:
-                # کاربر فقط نام کانال را داده و بعد از | چیزی ننوشته (جدیدترین قسمت‌ها)
                 query = channel_name
                 msg = f"🎧 در حال دریافت جدیدترین قسمت‌های پادکست «{channel_name}»..."
         else:
-            # جستجوی عادی
             query = user_input.strip()
             msg = f"🔍 در حال جستجوی پادکست برای «{query}»..."
             
         await update.message.reply_text(msg)
-        await send_podcast_results(update, context, query, offset=0)
+        # Pass update.message explicitly
+        await send_podcast_results(update.message, context, query, offset=0)
         
     except IndexError:
         help_text = (
@@ -56,15 +54,7 @@ async def pod_command(update, context):
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def send_podcast_results(message, context, query, offset):
-    if message.message:
-        message = message.message
-    elif message.callback_query:
-        message = message.callback_query.message
-    else:
-        return
-
-    # حالا می‌توانید از message.reply_text استفاده کنید
-    loading_msg = await message.reply_text(f"در حال جستجو برای: {query} (نتایج {offset+1} تا {offset+5})...")
+    # message parameter is now guaranteed to be a Telegram Message object
     loading_msg = await message.reply_text(f"در حال جستجو برای: {query} (نتایج {offset+1} تا {offset+5})...")
     
     results = await search_podcast_async(query, limit=5, offset=offset)
@@ -73,7 +63,6 @@ async def send_podcast_results(message, context, query, offset):
         await loading_msg.edit_text("❌ پادکستی با این نام یافت نشد.")
         return
 
-    # استفاده از bot_data برای ذخیره کش به جای message.bot
     if 'podcast_cache' not in context.bot_data:
         context.bot_data['podcast_cache'] = {}
 
@@ -84,7 +73,6 @@ async def send_podcast_results(message, context, query, offset):
         text += f"{i}. {res['title']}\n🎙 {res['podcast_name']}\n\n"
         keyboard.append([InlineKeyboardButton(f"📥 دانلود شماره {i}", callback_data=f"poddl:{res['id']}")])
         
-        # ذخیره لینک در کش
         if res['audio_url']:
             context.bot_data['podcast_cache'][str(res['id'])] = res['audio_url']
 
@@ -99,10 +87,22 @@ async def handle_pod_callback(update, context):
     data = query.data
 
     if data.startswith("podmore:"):
-        await query.edit_message_reply_markup(reply_markup=None)
+        # Remove ONLY the "podmore" button from the previous message
+        if query.message.reply_markup:
+            current_keyboard = query.message.reply_markup.inline_keyboard
+            new_keyboard = []
+            for row in current_keyboard:
+                new_row = [btn for btn in row if not (btn.callback_data and btn.callback_data.startswith("podmore:"))]
+                if new_row:
+                    new_keyboard.append(new_row)
+            
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(new_keyboard))
+
         parts = data.split(':', 2)
         offset = int(parts[1])
         search_query = parts[2]
+        
+        # Send new results
         await send_podcast_results(query.message, context, search_query, offset)
 
     elif data.startswith("poddl:"):
@@ -131,7 +131,6 @@ async def handle_pod_callback(update, context):
                 except:
                     pass
 
-        # Create unique folder like in YouTube handler
         file_id = str(uuid.uuid4())
         output_dir = os.path.join("downloads", file_id)
         os.makedirs(output_dir, exist_ok=True)
@@ -140,10 +139,8 @@ async def handle_pod_callback(update, context):
             file_path = await download_podcast_async(audio_url, output_dir, update_progress)
             await status_msg.edit_text("✂️ در حال پردازش و بررسی حجم فایل...")
             
-            # Split the podcast file into playable audio chunks
             part_files = split_media_playable(file_path)
             
-            # Schedule folder cleanup
             context.job_queue.run_once(cleanup_folder_job, 5 * 3600, data=output_dir, name=f"cleanup_pod_{file_id}")
             
             await status_msg.edit_text(f"✅ آماده‌سازی کامل شد. در حال ارسال {len(part_files)} بخش...")
@@ -170,8 +167,6 @@ async def handle_pod_callback(update, context):
             logger.error(f"Download/Send error: {e}")
             await status_msg.edit_text("❌ خطایی در طول دانلود یا ارسال رخ داد.")
 
-
-
 async def podchannel_command(update, context):
     """
     Allows users to search a specific podcast channel.
@@ -179,26 +174,21 @@ async def podchannel_command(update, context):
     Example: /podchannel TED Radio Hour | space
     """
     try:
-        # Extract the text after the command
         user_input = update.message.text.split(maxsplit=1)[1]
         
-        # Split by a separator like '|' or '-'
         if '|' in user_input:
             channel_name, search_term = user_input.split('|', 1)
         else:
             await update.message.reply_text("Please use the format: /podchannel Podcast Name | Search Term\nExample: /podchannel TED Radio Hour | space")
             return
             
-        # Clean up the strings
         channel_name = channel_name.strip()
         search_term = search_term.strip()
-        
-        # Combine them for the iTunes API
         combined_query = f"{channel_name} {search_term}"
         
-        # Send to your existing search function
         await update.message.reply_text(f"Searching in '{channel_name}' for '{search_term}'...")
-        await send_podcast_results(update, context, combined_query, offset=0)
+        # Pass update.message explicitly
+        await send_podcast_results(update.message, context, combined_query, offset=0)
         
     except IndexError:
         await update.message.reply_text("Please provide a search term. Example: /podchannel Ted | space")
