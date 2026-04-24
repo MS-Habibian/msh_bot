@@ -320,24 +320,41 @@ async def get_libgen_download_link(doi):
     return None
 
 
-async def get_paper_pdf_link(doi):
-    """
-    تلاش برای یافتن لینک دانلود مقاله. 
-    اول از Libgen استفاده می‌کند، در صورت شکست سراغ Sci-Hub می‌رود.
-    """
-    logger.info(f"🔄 Attempting to find PDF link for DOI: {doi}")
+async def get_paper_pdf_link(doi: str) -> str:
+    print(f"Starting paper download process for DOI: {doi}")
     
-    # Step 1: Try Libgen
-    link = await get_libgen_download_link(doi)
+    # 1. Try Unpaywall First (Best for Open Access papers like MDPI)
+    print("Attempting to fetch from Unpaywall...")
+    unpaywall_link = await get_unpaywall_pdf_link(doi)
+    if unpaywall_link:
+        print(f"Success! Found Unpaywall PDF link: {unpaywall_link}")
+        return unpaywall_link
     
-    if link:
-        return link
-        
-    # Step 2: Try Sci-Hub if Libgen returned None
-    logger.info(f"🔄 Libgen failed or timed out. Switching to Sci-Hub fallback for DOI: {doi}")
-    link = await get_scihub_download_link(doi)
-    
-    return link
+    print("Unpaywall failed or paper is not Open Access. Falling back to Libgen...")
+
+    # 2. Try Libgen
+    try:
+        # Assuming you have your existing get_libgen_download_link function
+        libgen_link = await get_libgen_download_link(doi)
+        if libgen_link:
+            print(f"Success! Found Libgen PDF link: {libgen_link}")
+            return libgen_link
+    except Exception as e:
+        print(f"Libgen attempt failed: {e}")
+
+    # 3. Try Sci-Hub (If Libgen fails/times out)
+    print("Libgen failed. Falling back to Sci-Hub...")
+    try:
+        # Assuming you have your existing get_scihub_download_link function
+        scihub_link = await get_scihub_download_link(doi)
+        if scihub_link:
+            print(f"Success! Found Sci-Hub PDF link: {scihub_link}")
+            return scihub_link
+    except Exception as e:
+        print(f"Sci-Hub attempt failed: {e}")
+
+    print("All download methods failed.")
+    return None
 
 
 async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -398,3 +415,29 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir)
             logger.info(f"🧹 Cleaned up temporary directory: {download_dir}")
+
+
+async def get_unpaywall_pdf_link(doi: str, email: str = "mehdifcb7997@gmail.com") -> str:
+    """
+    Checks Unpaywall for an open-access PDF link using the DOI.
+    """
+    url = f"https://api.unpaywall.org/v2/{doi}?email={email}"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=15) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Check if the paper is Open Access
+                    if data.get("is_oa"):
+                        best_location = data.get("best_oa_location")
+                        if best_location and best_location.get("url_for_pdf"):
+                            return best_location.get("url_for_pdf")
+                else:
+                    print(f"Unpaywall returned status {response.status} for DOI {doi}")
+    except asyncio.TimeoutError:
+        print("Unpaywall request timed out.")
+    except Exception as e:
+        print(f"Error checking Unpaywall: {e}")
+        
+    return None
