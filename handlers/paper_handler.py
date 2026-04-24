@@ -48,24 +48,30 @@ from utils.download_helper import download_file_async, split_file
 #     reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
     
 #     await message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+def is_real_pdf(filepath):
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(4)
+            return header == b'%PDF' # فایل‌های PDF با این بایت‌ها شروع می‌شوند
+    except Exception:
+        return False
 async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("لطفا کلمه کلیدی را وارد کنید.\nمثال: `/scholar machine learning | yr:2023`", parse_mode='Markdown')
+        await update.message.reply_text("لطفا کلمه کلیدی را وارد کنید.\nمثال: `/scholar machine learning | yr 2023`", parse_mode='Markdown')
         return
 
     raw_query = " ".join(context.args)
     query = raw_query
     from_year = None
     
-    # بررسی وجود فیلتر سال
+    # بررسی وجود فیلتر سال با فرمت yr 2023
     if "|" in raw_query:
         parts = [p.strip() for p in raw_query.split("|")]
-        query = parts[0] # بخش اول که نام مقاله است
+        query = parts[0]
         for part in parts[1:]:
-            if part.lower().startswith("yr:"):
-                from_year = part.split(":")[1].strip()
+            if part.lower().startswith("yr "):
+                from_year = part.lower().replace("yr", "").strip()
 
-    # Save data in user_data for pagination
     context.user_data['scholar_query'] = query 
     context.user_data['scholar_year'] = from_year 
     
@@ -76,14 +82,12 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
         
     await update.message.reply_text(msg_text)
     
-    # پاس دادن سال به تابع جستجو
     results = search_openalex(query, page=1, from_year=from_year)
     
     if not results:
         await update.message.reply_text("مقاله‌ای یافت نشد.")
         return
 
-    # Send the first 5 results
     text = f"📚 *نتایج جستجو برای:* {query}\n\n"
     download_buttons = []
 
@@ -96,12 +100,12 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
         text += f"📅 سال: {res['year']} (ارجاعات: {res.get('citation', 0)})\n"
         
         if res.get('pdf_link'):
-            text += "✅ فایل PDF موجود است\n\n"
+            text += "✅ لینک دسترسی موجود است\n\n"
             download_buttons.append(
                 InlineKeyboardButton(str(i), callback_data=f"paper_pdf|{res['pdf_link'][:50]}")
             )
         else:
-            text += "❌ فایل PDF موجود نیست\n\n"
+            text += "❌ لینک دسترسی رایگان یافت نشد\n\n"
 
     keyboard = []
     if download_buttons:
@@ -182,37 +186,40 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     
-    # Extract URL from the new prefix
     _, pdf_url = query.data.split("|", 1)
     
-    await context.bot.send_message(chat_id=query.message.chat_id, text="در حال دانلود مقاله...")
+    status_msg = await context.bot.send_message(chat_id=query.message.chat_id, text="در حال دریافت مقاله...")
     
     download_dir = f"downloads/{uuid.uuid4()}"
     os.makedirs(download_dir, exist_ok=True)
     
     try:
-        # Pass the DIRECTORY (download_dir), not the file path. 
-        # The function will return the final path to the downloaded file.
         downloaded_file = await download_file_async(pdf_url, download_dir)
         
-        # Split and send using the returned file path
+        # بررسی اینکه آیا فایل دانلود شده واقعاً یک PDF است یا یک صفحه وب (HTML)
+        if not is_real_pdf(downloaded_file):
+            await status_msg.edit_text(
+                f"⚠️ ناشر لینک مستقیم PDF را محدود کرده یا این یک صفحه وب است.\n\n"
+                f"🔗 می‌تونید از لینک زیر مستقیماً به مقاله دسترسی پیدا کنید:\n{pdf_url}"
+            )
+            return
+
         parts = split_file(downloaded_file)
         for part in parts:
             with open(part, 'rb') as f:
-                # Get the base file name
                 file_name = os.path.basename(part)
-                # Ensure it has a .pdf extension so mobile devices recognize it
                 if not file_name.lower().endswith('.pdf'):
                     file_name += '.pdf'
                 
                 await context.bot.send_document(
                     chat_id=query.message.chat_id, 
                     document=f,
-                    filename=file_name  # Force the filename with extension
+                    filename=file_name
                 )
+        await status_msg.delete()
                 
     except Exception as e:
-        await context.bot.send_message(chat_id=query.message.chat_id, text=f"خطا در دانلود مقاله: {e}")
+        await status_msg.edit_text(f"خطا در دریافت مقاله. ممکن است لینک منقضی شده باشد.\nلینک: {pdf_url}")
     finally:
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir)
