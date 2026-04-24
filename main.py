@@ -15,7 +15,7 @@ from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_do
 from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
 from handlers.commands import start_command, help_command, help_callback_handler
-from handlers.podcast import handle_pod_callback, pod_command, handle_pod_download_callback
+from handlers.podcast import handle_pod_callback, pod_command
 from telegram.ext import CommandHandler, CallbackQueryHandler
 
 # Import Scholar Handlers
