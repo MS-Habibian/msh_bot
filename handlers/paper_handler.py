@@ -148,7 +148,9 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
             out_path = os.path.join(download_dir, "paper.pdf")
             
             # Run scidownl in a separate thread so it doesn't block the bot
-            await asyncio.to_thread(scihub_download, doi, paper_type="doi", out=out_path)
+            await asyncio.to_thread(scihub_download, doi, paper_type="doi", out=out_path, scihub_url="https://sci-hub.ru") 
+            # Try different mirrors like https://sci-hub.se or https://sci-hub.st if .ru fails
+
             
             if not os.path.exists(out_path):
                 raise Exception("مقاله در Sci-Hub یافت نشد.")
