@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 async def search_podcast_async(query, limit=5, offset=0):
     print('offsett: ', offset)
     # Fetch a large limit (up to 200) since iTunes doesn't support 'offset' natively
-    url = f"https://itunes.apple.com/search?term={query}&entity=podcastEpisode&limit=200"
+    url = f"https://itunes.apple.com/search?term={query}&entity=podcastEpisode&limit=100"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:

@@ -15,7 +15,7 @@ from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_do
 from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
 from handlers.commands import start_command, help_command, help_callback_handler
-from handlers.podcast import handle_pod_callback, pod_command 
+from handlers.podcast import handle_pod_callback, pod_command, podchannel_command 
 from telegram.ext import CommandHandler, CallbackQueryHandler
 
 # Import Scholar Handlers
@@ -89,6 +89,7 @@ def main() -> None:
     # application.add_handler(CallbackQueryHandler(handle_pod_download_callback, pattern='^poddl:'))
     # تغییر پترن به گونه‌ای که هر دو poddl و podmore را بگیرد
     application.add_handler(CallbackQueryHandler(handle_pod_callback, pattern='^pod(dl|more):'))
+    application.add_handler(CommandHandler("podchannel", podchannel_command)) # Add this line
     # application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
 
 

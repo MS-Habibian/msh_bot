@@ -53,6 +53,7 @@ async def handle_pod_callback(update, context):
     data = query.data
 
     if data.startswith("podmore:"):
+        await query.edit_message_reply_markup(reply_markup=None)
         parts = data.split(':', 2)
         offset = int(parts[1])
         search_query = parts[2]
@@ -122,3 +123,36 @@ async def handle_pod_callback(update, context):
         except Exception as e:
             logger.error(f"Download/Send error: {e}")
             await status_msg.edit_text("❌ خطایی در طول دانلود یا ارسال رخ داد.")
+
+
+
+async def podchannel_command(update, context):
+    """
+    Allows users to search a specific podcast channel.
+    Usage: /podchannel <Podcast Name> | <Search Term>
+    Example: /podchannel TED Radio Hour | space
+    """
+    try:
+        # Extract the text after the command
+        user_input = update.message.text.split(maxsplit=1)[1]
+        
+        # Split by a separator like '|' or '-'
+        if '|' in user_input:
+            channel_name, search_term = user_input.split('|', 1)
+        else:
+            await update.message.reply_text("Please use the format: /podchannel Podcast Name | Search Term\nExample: /podchannel TED Radio Hour | space")
+            return
+            
+        # Clean up the strings
+        channel_name = channel_name.strip()
+        search_term = search_term.strip()
+        
+        # Combine them for the iTunes API
+        combined_query = f"{channel_name} {search_term}"
+        
+        # Send to your existing search function
+        await update.message.reply_text(f"Searching in '{channel_name}' for '{search_term}'...")
+        await send_podcast_results(update, context, combined_query, offset=0)
+        
+    except IndexError:
+        await update.message.reply_text("Please provide a search term. Example: /podchannel Ted | space")
