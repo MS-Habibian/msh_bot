@@ -51,6 +51,7 @@ async def download_podcast_async(url: str, output_dir: str, progress_callback=No
 logger = logging.getLogger(__name__)
 
 async def search_podcast_async(query, limit=5, offset=0):
+    print('offsett: ', offset)
     url = f"https://itunes.apple.com/search?term={query}&entity=podcastEpisode&limit={limit}&offset={offset}"
     try:
         async with aiohttp.ClientSession() as session:
