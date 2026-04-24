@@ -2,6 +2,8 @@
 import os
 import uuid
 import shutil
+import aiohttp
+from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from utils.search_papers import search_openalex # Updated import
@@ -96,8 +98,10 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
         text += f"👤 نویسندگان: {res['authors']}\n"
         
         journal = res.get('journal', 'نامشخص')
+        doi = res.get('doi', 'نامشخص')
         text += f"📖 ژورنال: {journal}\n"
         text += f"📅 سال: {res['year']} (ارجاعات: {res.get('citation', 0)})\n"
+        text += f"📖 doi: {doi}\n"
         
         if res.get('pdf_link'):
             text += "✅ لینک دسترسی موجود است\n\n"
@@ -162,8 +166,10 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
         text += f"👤 نویسندگان:  {res['authors']}\n"
         
         journal = res.get('journal', 'نامشخص')
+        doi = res.get('doi', 'نامشخص')
         text += f"📖 ژورنال: {journal}\n"
         text += f"📅 سال:  {res['year']} (ارجاعات: {res.get('citation', 0)})\n"
+        text += f"📖 doi: {doi}\n"
         
         if res.get('pdf_link'):
             text += "✅ فایل PDF موجود است\n\n"
@@ -182,44 +188,89 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
     reply_markup = InlineKeyboardMarkup(keyboard)
     await status_msg.edit_text(text, parse_mode='Markdown', reply_markup=reply_markup)
 
+
+
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://scholar.google.com/'
+}
+
+async def fetch_and_save(url, filepath):
+    """دانلود فایل با هدرهای واقعی مرورگر"""
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with session.get(url, allow_redirects=True, timeout=20) as response:
+            response.raise_for_status()
+            with open(filepath, 'wb') as f:
+                while True:
+                    chunk = await response.content.read(8192)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            return filepath, response.headers.get('Content-Type', '')
+
+async def extract_pdf_from_html(html_filepath):
+    """جستجوی تگ‌های متای استاندارد علمی برای پیدا کردن لینک واقعی PDF"""
+    try:
+        with open(html_filepath, 'r', encoding='utf-8') as f:
+            soup = BeautifulSoup(f, 'html.parser')
+            # ناشران علمی معمولا لینک PDF را در این تگ قرار می‌دهند
+            meta_tag = soup.find('meta', attrs={'name': 'citation_pdf_url'})
+            if meta_tag and meta_tag.get('content'):
+                return meta_tag['content']
+    except Exception:
+        pass
+    return None
+
 async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     _, pdf_url = query.data.split("|", 1)
     
-    status_msg = await context.bot.send_message(chat_id=query.message.chat_id, text="در حال دریافت مقاله...")
+    status_msg = await context.bot.send_message(chat_id=query.message.chat_id, text="⏳ در حال تلاش برای دور زدن محدودیت‌ها و دریافت مقاله...")
     
     download_dir = f"downloads/{uuid.uuid4()}"
     os.makedirs(download_dir, exist_ok=True)
+    temp_file = os.path.join(download_dir, "temp_download.file")
     
     try:
-        downloaded_file = await download_file_async(pdf_url, download_dir)
+        # مرحله ۱: تلاش برای دانلود با هدرهای مرورگر
+        await fetch_and_save(pdf_url, temp_file)
         
-        # بررسی اینکه آیا فایل دانلود شده واقعاً یک PDF است یا یک صفحه وب (HTML)
-        if not is_real_pdf(downloaded_file):
+        # مرحله ۲: اگر فایل متنی/HTML بود (Landing Page)، لینک واقعی را از داخلش استخراج کن
+        if not is_real_pdf(temp_file):
+            real_pdf_url = await extract_pdf_from_html(temp_file)
+            if real_pdf_url:
+                await status_msg.edit_text("🔍 لینک پنهان PDF یافت شد، در حال دریافت...")
+                # تلاش مجدد برای دانلود لینک واقعی
+                await fetch_and_save(real_pdf_url, temp_file)
+        
+        # مرحله ۳: بررسی نهایی
+        if not is_real_pdf(temp_file):
             await status_msg.edit_text(
-                f"⚠️ ناشر لینک مستقیم PDF را محدود کرده یا این یک صفحه وب است.\n\n"
-                f"🔗 می‌تونید از لینک زیر مستقیماً به مقاله دسترسی پیدا کنید:\n{pdf_url}"
+                f"⚠️ ناشر این مقاله دسترسی مستقیم ربات‌ها را کاملاً مسدود کرده است.\n\n"
+                f"🔗 لینک مستقیم/صفحه مقاله:\n{pdf_url}\n"
             )
             return
 
-        parts = split_file(downloaded_file)
+        # اگر واقعا PDF بود، ارسال کن
+        parts = split_file(temp_file)
         for part in parts:
             with open(part, 'rb') as f:
-                file_name = os.path.basename(part)
-                if not file_name.lower().endswith('.pdf'):
-                    file_name += '.pdf'
-                
                 await context.bot.send_document(
                     chat_id=query.message.chat_id, 
                     document=f,
-                    filename=file_name
+                    filename='Paper.pdf'
                 )
         await status_msg.delete()
                 
     except Exception as e:
-        await status_msg.edit_text(f"خطا در دریافت مقاله. ممکن است لینک منقضی شده باشد.\nلینک: {pdf_url}")
+        await status_msg.edit_text(
+            f"❌ دریافت مقاله با خطای مسدودسازی سرور (403/Timeout) مواجه شد.\n\n"
+            f"🔗 لینک منبع:\n{pdf_url}"
+        )
     finally:
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir)
