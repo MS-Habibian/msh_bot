@@ -182,8 +182,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 async def get_scihub_download_link(doi):
-    """جستجوی مقاله در Sci-Hub بر اساس DOI"""
-    # List of common Sci-Hub domains (ordered by typical reliability)
+    """جستجوی مقاله در Sci-Hub بر اساس DOI با استخراج‌گر قوی‌تر"""
+    # List of common Sci-Hub domains
     scihub_mirrors = ["https://sci-hub.se", "https://sci-hub.st", "https://sci-hub.ru"]
     
     async with aiohttp.ClientSession(headers=HEADERS) as session:
@@ -196,12 +196,23 @@ async def get_scihub_download_link(doi):
                         html = await response.text()
                         soup = BeautifulSoup(html, 'html.parser')
                         
-                        # Sci-Hub typically puts the PDF inside an iframe or embed tag with id="pdf"
-                        pdf_container = soup.select_one('iframe#pdf') or soup.select_one('embed#pdf') or soup.select_one('#article embed')
+                        pdf_url = None
                         
+                        # 1. Try finding embed or iframe (even without id="pdf")
+                        pdf_container = soup.find('embed', id='pdf') or soup.find('iframe', id='pdf') or soup.find('embed')
                         if pdf_container and pdf_container.has_attr('src'):
                             pdf_url = pdf_container['src']
-                            
+                        
+                        # 2. If not found, try finding the download button's onclick attribute
+                        if not pdf_url:
+                            button = soup.find('button', onclick=lambda x: x and 'location.href' in x)
+                            if button:
+                                # Example: onclick="location.href='//domain.com/path/paper.pdf?download=true'"
+                                parts = button['onclick'].split("'")
+                                if len(parts) >= 3:
+                                    pdf_url = parts[1]
+
+                        if pdf_url:
                             # Clean up the URL format
                             if pdf_url.startswith('//'):
                                 pdf_url = f"https:{pdf_url}"
@@ -257,7 +268,7 @@ async def get_libgen_download_link(doi):
             logger.error(f"❌ Error accessing direct mirror: {e}")
 
         # Fallback using a more stable domain (libgen.rs) and a longer timeout
-        search_url = f"https://libgen.rs/scimag/?q={doi}"
+        search_url = f"https://libgen.im/scimag/?q={doi}"
         try:
             logger.info(f"🌐 Fallback searching main Libgen: {search_url}")
             async with session.get(search_url, timeout=30) as response:
