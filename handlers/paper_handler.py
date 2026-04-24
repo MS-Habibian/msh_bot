@@ -181,6 +181,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+async def get_scihub_download_link(doi):
+    """جستجوی مقاله در Sci-Hub بر اساس DOI"""
+    # List of common Sci-Hub domains (ordered by typical reliability)
+    scihub_mirrors = ["https://sci-hub.se", "https://sci-hub.st", "https://sci-hub.ru"]
+    
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        for base_url in scihub_mirrors:
+            search_url = f"{base_url}/{doi}"
+            try:
+                logger.info(f"🌐 Accessing Sci-Hub mirror: {search_url}")
+                async with session.get(search_url, timeout=20) as response:
+                    if response.status == 200:
+                        html = await response.text()
+                        soup = BeautifulSoup(html, 'html.parser')
+                        
+                        # Sci-Hub typically puts the PDF inside an iframe or embed tag with id="pdf"
+                        pdf_container = soup.select_one('iframe#pdf') or soup.select_one('embed#pdf') or soup.select_one('#article embed')
+                        
+                        if pdf_container and pdf_container.has_attr('src'):
+                            pdf_url = pdf_container['src']
+                            
+                            # Clean up the URL format
+                            if pdf_url.startswith('//'):
+                                pdf_url = f"https:{pdf_url}"
+                            elif pdf_url.startswith('/'):
+                                pdf_url = f"{base_url}{pdf_url}"
+                                
+                            logger.info(f"✅ Found Sci-Hub download link: {pdf_url}")
+                            return pdf_url
+                        else:
+                            logger.warning(f"⚠️ Sci-Hub page loaded, but no PDF container found on {base_url}.")
+                    else:
+                        logger.warning(f"⚠️ Sci-Hub mirror {base_url} returned HTTP status: {response.status}")
+            
+            except asyncio.TimeoutError:
+                logger.error(f"❌ Sci-Hub mirror {base_url} timed out.")
+            except Exception as e:
+                logger.error(f"❌ Error accessing Sci-Hub mirror {base_url}: {e}")
+                
+        logger.error("❌ Exhausted all Sci-Hub mirrors. Paper not found.")
+        return None
+
 
 async def get_libgen_download_link(doi):
     """جستجوی مقاله در Libgen بر اساس DOI و استخراج لینک مستقیم PDF با لاگینگ"""
@@ -266,6 +308,27 @@ async def get_libgen_download_link(doi):
 
     return None
 
+
+async def get_paper_pdf_link(doi):
+    """
+    تلاش برای یافتن لینک دانلود مقاله. 
+    اول از Libgen استفاده می‌کند، در صورت شکست سراغ Sci-Hub می‌رود.
+    """
+    logger.info(f"🔄 Attempting to find PDF link for DOI: {doi}")
+    
+    # Step 1: Try Libgen
+    link = await get_libgen_download_link(doi)
+    
+    if link:
+        return link
+        
+    # Step 2: Try Sci-Hub if Libgen returned None
+    logger.info(f"🔄 Libgen failed or timed out. Switching to Sci-Hub fallback for DOI: {doi}")
+    link = await get_scihub_download_link(doi)
+    
+    return link
+
+
 async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -284,7 +347,7 @@ async def paper_download_callback(update: Update, context: ContextTypes.DEFAULT_
     
     try:
         # 1. پیدا کردن لینک مستقیم
-        pdf_url = await get_libgen_download_link(doi)
+        pdf_url = await get_paper_pdf_link(doi)
         
         if not pdf_url:
             await status_msg.edit_text(f"❌ مقاله در پایگاه Libgen یافت نشد یا دسترسی مسدود است.\nDOI: {doi}")
