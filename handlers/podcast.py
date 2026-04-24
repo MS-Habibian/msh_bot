@@ -1,151 +1,105 @@
-import asyncio
+import logging
 import os
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from utils.podcast_helper import search_podcast_async, get_podcast_url_async, download_podcast_async
 import time
-import uuid
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ContextTypes
 
-from utils.podcast_helper import search_podcast_async, download_podcast_async
-from utils.download_helper import format_size, split_media_playable
-from handlers.downloader import cleanup_folder_job
+logger = logging.getLogger(__name__)
 
-async def podcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.args:
-        await update.message.reply_text("⚠️ لطفاً نام پادکست را وارد کنید!\n*نحوه استفاده:* `/podcast <نام پادکست>`", parse_mode="Markdown")
+async def pod_command(update, context):
+    query = ' '.join(context.args)
+    if not query:
+        await update.message.reply_text("لطفاً نام پادکست یا موضوع را وارد کنید. مثال:\n/podcast channel b")
         return
 
-    query_str = " ".join(context.args)
-    status_msg = await update.message.reply_text("🔍 در حال جستجوی پادکست...")
+    # ارسال context به تابع
+    await send_podcast_results(update.message, context, query, offset=0)
 
-    try:
-        # جستجو و دریافت ۵۰ نتیجه
-        results = await search_podcast_async(query_str, limit=50)
-        if not results:
-            await status_msg.edit_text("❌ نتیجه‌ای یافت نشد.")
-            return
-
-        # ذخیره نتایج در کش برای صفحه‌بندی
-        if 'podcast_cache' not in context.bot_data:
-            context.bot_data['podcast_cache'] = {}
-        context.bot_data['podcast_cache'][query_str] = results
-
-        await send_podcast_page(status_msg, query_str, 0, context)
-
-    except Exception as e:
-        await status_msg.edit_text(f"❌ خطا در جستجو: `{str(e)}`", parse_mode="Markdown")
-
-async def send_podcast_page(message, query_str: str, offset: int, context: ContextTypes.DEFAULT_TYPE):
-    """تابع کمکی برای نمایش یک صفحه از نتایج (۵ تایی)"""
-    results = context.bot_data['podcast_cache'].get(query_str, [])
-    page_results = results[offset : offset + 5]
-
-    if not page_results:
-        await message.edit_text("❌ نتیجه بیشتری یافت نشد.")
+async def send_podcast_results(message, context, query, offset):
+    loading_msg = await message.reply_text(f"در حال جستجو برای: {query} (نتایج {offset+1} تا {offset+5})...")
+    
+    results = await search_podcast_async(query, limit=5, offset=offset)
+    
+    if not results:
+        await loading_msg.edit_text("❌ پادکستی با این نام یافت نشد.")
         return
 
-    # کیبورد شامل دکمه‌های دانلود
+    # استفاده از bot_data برای ذخیره کش به جای message.bot
+    if 'podcast_cache' not in context.bot_data:
+        context.bot_data['podcast_cache'] = {}
+
+    text = f"🎧 نتایج جستجو برای: {query}\n\n"
     keyboard = []
-    text = f"🎙 *نتایج جستجوی پادکست:*\n`{query_str}`\n\n"
     
-    for i, pod in enumerate(page_results, start=offset + 1):
-        text += f"{i}. 🎧 {pod['title']} | 👤 {pod['artist']}\n"
-        # ذخیره لینک در bot_data تا نیاز نباشد لینک طولانی را در callback_data بفرستیم
-        context.bot_data[f"podlink_{pod['id']}"] = pod['url']
-        keyboard.append([InlineKeyboardButton(f"📥 دانلود #{i}", callback_data=f"poddl:{pod['id']}")])
+    for i, res in enumerate(results, 1):
+        text += f"{i}. {res['title']}\n🎙 {res['podcast_name']}\n\n"
+        keyboard.append([InlineKeyboardButton(f"📥 دانلود شماره {i}", callback_data=f"poddl:{res['id']}")])
+        
+        # ذخیره لینک در کش
+        if res['audio_url']:
+            context.bot_data['podcast_cache'][str(res['id'])] = res['audio_url']
 
-    # دکمه‌های ناوبری (صفحه قبل و بعد)
-    nav_row = []
-    if offset >= 5:
-        nav_row.append(InlineKeyboardButton("⬅️ قبلی", callback_data=f"podmore:{offset - 5}:{query_str}"))
-    if offset + 5 < len(results):
-        nav_row.append(InlineKeyboardButton("بعدی ➡️", callback_data=f"podmore:{offset + 5}:{query_str}"))
-    
-    if nav_row:
-        keyboard.append(nav_row)
+    safe_query = query[:20] 
+    keyboard.append([InlineKeyboardButton("⬇️ نتایج بعدی", callback_data=f"podmore:{offset+5}:{safe_query}")])
 
-    await message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    await loading_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def handle_pod_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_pod_callback(update, context):
     query = update.callback_query
     await query.answer()
-    data = query.data.split(":")
+    data = query.data
 
-    if data[0] == "podmore":
-        offset = int(data[1])
-        query_str = data[2]
-        await send_podcast_page(query.message, query_str, offset, context)
-        return
-
-    elif data[0] == "poddl":
-        pod_id = data[1]
-        pod_url = context.bot_data.get(f"podlink_{pod_id}")
+    if data.startswith("podmore:"):
+        parts = data.split(':', 2)
+        offset = int(parts[1])
+        search_query = parts[2]
         
-        if not pod_url:
-            await query.edit_message_text("❌ لینک این پادکست در سرور منقضی شده است. لطفاً دوباره جستجو کنید.")
+        # ارسال context به تابع در فراخوانی مجدد
+        await send_podcast_results(query.message, context, search_query, offset)
+
+    elif data.startswith("poddl:"):
+        track_id = data.split(":")[1]
+        
+        # خواندن از کش با استفاده از bot_data
+        audio_url = context.bot_data.get('podcast_cache', {}).get(track_id)
+        
+        if not audio_url:
+            audio_url = await get_podcast_url_async(track_id)
+
+        if not audio_url:
+            await query.message.reply_text("❌ خطا در دریافت لینک پادکست. (لاگ‌ها را بررسی کنید)")
+            logger.error(f"Failed to get audio URL for track_id: {track_id}")
             return
 
-        file_id = str(uuid.uuid4())
-        download_folder = os.path.join("downloads", file_id)
+        status_msg = await query.message.reply_text("⏳ در حال دانلود پادکست...")
         
-        await query.edit_message_text("⏳ در حال دانلود پادکست...\nاین کار ممکن است چند دقیقه زمان ببرد.")
-
-        loop = asyncio.get_running_loop()
-        
-        # Use a list to store the last update time so we can modify it inside the inner function
-        last_update_time = [0.0]
-
-        def update_progress(downloaded, total):
-            current_time = time.time()
-            
-            # Strict Throttle: Update maximum once every 2 seconds, no exceptions.
-            if current_time - last_update_time[0] < 2.0:
-                return
-            
-            last_update_time[0] = current_time
-
-            async def _do_update():
+        last_edit_time = 0
+        async def update_progress(current, total):
+            nonlocal last_edit_time
+            now = time.time()
+            if now - last_edit_time > 3:
+                percent = (current / total) * 100 if total else 0
                 try:
-                    # Handle None or 0 total gracefully
-                    if total and total > 0:
-                        percent = (downloaded / total) * 100
-                        text = f"⬇️ *در حال دانلود پادکست...*\nپیشرفت: `{percent:.1f}%`\nحجم: `{format_size(downloaded)} / {format_size(total)}`"
-                    else:
-                        text = f"⬇️ *در حال دانلود پادکست (استریم)...*\nدانلود شده: `{format_size(downloaded)}`"
-                    
-                    await query.edit_message_text(text=text, parse_mode="Markdown")
-                except Exception:
-                    pass 
-            
-            asyncio.run_coroutine_threadsafe(_do_update(), loop)
+                    await status_msg.edit_text(f"⏳ در حال دانلود...\nپیشرفت: {percent:.1f}%")
+                    last_edit_time = now
+                except:
+                    pass
 
-
+        output_dir = "downloads"
+        os.makedirs(output_dir, exist_ok=True)
+        
         try:
-            # دانلود پادکست
-            filepath = await download_podcast_async(pod_url, download_folder, progress_callback=update_progress)
-            await query.edit_message_text("✂️ در حال پردازش فایل و آماده‌سازی برای ارسال...")
+            file_path = await download_podcast_async(audio_url, output_dir, update_progress)
+            await status_msg.edit_text("✅ دانلود کامل شد. در حال ارسال...")
             
-            part_files = split_media_playable(filepath)
-
-            context.job_queue.run_once(cleanup_folder_job, 5 * 3600, data=download_folder, name=f"cleanup_{file_id}")
-
-            await query.edit_message_text(f"✅ *پردازش کامل شد!*\n\n📂 تعداد بخش‌ها: `{len(part_files)}`\n☁️ *در حال آپلود...*", parse_mode="Markdown")
-
-            for i, part_path in enumerate(part_files):
-                try:
-                    with open(part_path, "rb") as f:
-                        await context.bot.send_audio(
-                            chat_id=update.effective_chat.id,
-                            audio=f,
-                            caption=f"🎧 پادکست - بخش {i+1} از {len(part_files)}",
-                            read_timeout=120, write_timeout=300, connect_timeout=120,
-                            reply_to_message_id=query.message.message_id
-                        )
-                except Exception as e:
-                    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"❌ آپلود بخش {i+1} ناموفق بود.\n{str(e)}")
-
+            await context.bot.send_audio(
+                chat_id=query.message.chat_id,
+                audio=open(file_path, 'rb'),
+                title="Podcast Episode",
+                performer="Podcast Bot"
+            )
+            await status_msg.delete()
+            os.remove(file_path)
         except Exception as e:
-            error_text = f"❌ *خطا در دانلود پادکست:*\n`{str(e)}`"
-            try:
-                await query.edit_message_text(text=error_text, parse_mode="Markdown")
-            except:
-                await context.bot.send_message(chat_id=update.effective_chat.id, text=error_text, parse_mode="Markdown")
+            logger.error(f"Download/Send error: {e}")
+            await status_msg.edit_text("❌ خطایی در طول دانلود یا ارسال رخ داد.")
