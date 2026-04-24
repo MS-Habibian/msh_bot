@@ -8,7 +8,7 @@ async def search_podcast_async(query: str, limit: int = 5) -> list:
     
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
-            data = await response.json()
+            data = await response.json(content_type=None)
             results = []
             
             for item in data.get('results', []):
@@ -31,7 +31,7 @@ async def get_podcast_url_async(track_id: str) -> str:
     url = f"https://itunes.apple.com/lookup?id={track_id}&entity=podcastEpisode"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
-            data = await response.json()
+            data = await response.json(content_type=None)
             if data.get('results'):
                 return data['results'][0].get('episodeUrl')
     return None
