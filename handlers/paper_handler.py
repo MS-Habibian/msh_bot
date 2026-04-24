@@ -50,16 +50,34 @@ from utils.download_helper import download_file_async, split_file
 #     await message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("لطفا کلمه کلیدی را وارد کنید. مثال: /scholar machine learning")
+        await update.message.reply_text("لطفا کلمه کلیدی را وارد کنید.\nمثال: `/scholar machine learning | yr:2023`", parse_mode='Markdown')
         return
 
-    query = " ".join(context.args)
-    # Save the query in user_data for pagination
+    raw_query = " ".join(context.args)
+    query = raw_query
+    from_year = None
+    
+    # بررسی وجود فیلتر سال
+    if "|" in raw_query:
+        parts = [p.strip() for p in raw_query.split("|")]
+        query = parts[0] # بخش اول که نام مقاله است
+        for part in parts[1:]:
+            if part.lower().startswith("yr:"):
+                from_year = part.split(":")[1].strip()
+
+    # Save data in user_data for pagination
     context.user_data['scholar_query'] = query 
+    context.user_data['scholar_year'] = from_year 
     
-    await update.message.reply_text(f"در حال جستجو برای: {query} ...")
+    msg_text = f"در حال جستجو برای: {query}"
+    if from_year:
+        msg_text += f" (از سال {from_year} به بعد)"
+    msg_text += " ..."
+        
+    await update.message.reply_text(msg_text)
     
-    results = search_openalex(query, page=1)
+    # پاس دادن سال به تابع جستجو
+    results = search_openalex(query, page=1, from_year=from_year)
     
     if not results:
         await update.message.reply_text("مقاله‌ای یافت نشد.")
@@ -73,10 +91,9 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
         text += f"*{i}. {res['title']}*\n"
         text += f"👤 نویسندگان: {res['authors']}\n"
         
-        # اضافه کردن ژورنال و سال و تعداد ارجاعات
         journal = res.get('journal', 'نامشخص')
         text += f"📖 ژورنال: {journal}\n"
-        text += f"📅 سال: {res['year']}\n"
+        text += f"📅 سال: {res['year']} (ارجاعات: {res.get('citation', 0)})\n"
         
         if res.get('pdf_link'):
             text += "✅ فایل PDF موجود است\n\n"
@@ -94,7 +111,8 @@ async def paper_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
-# --- Add this NEW function for the Next button ---
+
+
 async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_call = update.callback_query
     await query_call.answer()
@@ -103,16 +121,17 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
     page = int(page_str)
     
     query_text = context.user_data.get('scholar_query')
+    from_year = context.user_data.get('scholar_year') # گرفتن فیلتر سال
+    
     if not query_text:
         await query_call.message.reply_text("جستجوی شما منقضی شده است. لطفا دوباره جستجو کنید.")
         return
 
-    # حفظ دکمه‌های دانلود پیام قبلی و حذف فقط دکمه "صفحه بعدی"
+    # حفظ دکمه‌های دانلود پیام قبلی
     if query_call.message.reply_markup:
         old_keyboard = query_call.message.reply_markup.inline_keyboard
         new_old_keyboard = []
         for row in old_keyboard:
-            # فقط دکمه‌هایی که مربوط به صفحه بعد نیستند را نگه می‌داریم
             clean_row = [btn for btn in row if not (btn.callback_data and btn.callback_data.startswith("scholar_page"))]
             if clean_row:
                 new_old_keyboard.append(clean_row)
@@ -123,7 +142,8 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
         text=f"در حال بارگذاری صفحه {page}..."
     )
 
-    results = search_openalex(query_text, page=page) # فرض بر این است که این تابع از قبل ایمپورت شده
+    # پاس دادن متغیرها به جستجو
+    results = search_openalex(query_text, page=page, from_year=from_year)
     
     if not results:
         await status_msg.edit_text("مقاله بیشتری یافت نشد.")
@@ -136,7 +156,10 @@ async def paper_paginate_callback(update: Update, context: ContextTypes.DEFAULT_
     for i, res in enumerate(results, start_num):
         text += f"*{i}. {res['title']}*\n"
         text += f"👤 نویسندگان:  {res['authors']}\n"
-        text += f"📅 سال:  {res['year']}\n"
+        
+        journal = res.get('journal', 'نامشخص')
+        text += f"📖 ژورنال: {journal}\n"
+        text += f"📅 سال:  {res['year']} (ارجاعات: {res.get('citation', 0)})\n"
         
         if res.get('pdf_link'):
             text += "✅ فایل PDF موجود است\n\n"

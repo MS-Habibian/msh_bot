@@ -49,10 +49,15 @@
 # In search_papers.py
 import requests
 
-def search_openalex(query: str, page: int = 1, per_page: int = 5) -> list:
-    # URL encode the query if needed, and add page/per_page parameters
+def search_openalex(query: str, page: int = 1, per_page: int = 5, from_year: str = None) -> list:
+    # ساختن URL اصلی
     url = f"https://api.openalex.org/works?search={query}&page={page}&per_page={per_page}"
     
+    # اضافه کردن فیلتر سال در صورت وجود
+    if from_year:
+        # در OpenAlex برای فیلتر از یک سال به بعد از from_publication_date استفاده می‌شود
+        url += f"&filter=from_publication_date:{from_year}-01-01"
+        
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -62,7 +67,7 @@ def search_openalex(query: str, page: int = 1, per_page: int = 5) -> list:
         for work in data.get('results', []):
             title = work.get('title', 'بدون عنوان')
             year = work.get('publication_year', 'نامشخص')
-            citation = work.get('cited_by_count', 0), 
+            citation = work.get('cited_by_count', 0)
             journal = work.get('primary_location', {}).get('source', {}).get('display_name') if work.get('primary_location') and work.get('primary_location').get('source') else 'نامشخص'
             
             # Extract authors
