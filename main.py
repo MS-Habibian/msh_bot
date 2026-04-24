@@ -86,7 +86,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(paper_paginate_callback, pattern=r"^scholar_page\|"))
     # در بخشی که هندلرهای یوتیوب را Add می‌کنید، این خطوط را اضافه کنید:
     application.add_handler(CommandHandler("podcast", pod_command))
-    application.add_handler(CallbackQueryHandler(handle_pod_download_callback, pattern='^poddl:'))
+    # application.add_handler(CallbackQueryHandler(handle_pod_download_callback, pattern='^poddl:'))
     # تغییر پترن به گونه‌ای که هر دو poddl و podmore را بگیرد
     application.add_handler(CallbackQueryHandler(handle_pod_callback, pattern='^pod(dl|more):'))
     # application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
