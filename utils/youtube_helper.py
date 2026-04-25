@@ -34,7 +34,7 @@ async def search_youtube_async(query: str, limit: int = 5) -> list:
         raise e
 
 async def get_youtube_qualities_async(video_url: str) -> list:
-    ydl_opts = {'cookiefile': 'cookie.txt', 'js_runtimes': {'node': {}}, 'quiet': True, 'no_warnings': True}
+    ydl_opts = {'cookiefile': 'cookie.txt', 'js_runtimes': {'node': {}}, 'remote_components': 'ejs:github', 'quiet': True, 'no_warnings': True}
     
     def _get_info():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -68,6 +68,7 @@ async def download_youtube_video_async(url: str, output_dir: str, format_str: st
         'outtmpl': os.path.join(output_dir, '%(title)s_%(id)s.%(ext)s'),
         'cookiefile': 'cookie.txt', 
         'js_runtimes': {'node': {}},    
+        'remote_components': 'ejs:github',
         'progress_hooks': [my_hook],
         'quiet': True,
         'no_warnings': True,
