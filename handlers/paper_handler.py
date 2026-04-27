@@ -162,18 +162,29 @@ HEADERS = {
     'Referer': 'https://scholar.google.com/'
 }
 
-async def fetch_and_save(url, filepath):
-    """دانلود فایل با هدرهای واقعی مرورگر"""
-    async with aiohttp.ClientSession(headers=HEADERS) as session:
-        async with session.get(url, allow_redirects=True, timeout=20) as response:
+async def fetch_and_save(url: str, save_path: str):
+    """Downloads the file from the given URL and saves it."""
+    
+    # Add headers to mimic a real web browser and bypass 403 blocks
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/pdf,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive"
+    }
+    
+    async with aiohttp.ClientSession(headers=headers) as session:
+        # allow_redirects=True is important for publishers that redirect to a final PDF URL
+        async with session.get(url, allow_redirects=True, timeout=60) as response:
             response.raise_for_status()
-            with open(filepath, 'wb') as f:
+            
+            with open(save_path, 'wb') as f:
                 while True:
                     chunk = await response.content.read(8192)
                     if not chunk:
                         break
                     f.write(chunk)
-            return filepath, response.headers.get('Content-Type', '')
+
 
 
 logging.basicConfig(
