@@ -17,7 +17,7 @@ try:
     api = Linkedin(
         '', # username is not needed when using a cookie
         '', # password is not needed when using a cookie
-        cookies=LINKEDIN_LI_AT_COOKIE,
+        cookies={'li_at': LINKEDIN_LI_AT_COOKIE},
         refresh_cookies=False, # We don't want the library to try and refresh it
         debug=False # Set to True to see detailed API calls
     )
