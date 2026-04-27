@@ -186,68 +186,67 @@ SCRAPERAPI_KEY = os.getenv("SCRAPERAPI_KEY")
 
 
 async def get_scihub_download_link(doi):
-    """جستجوی مقاله در Sci-Hub بر اساس DOI با استفاده از ScraperAPI"""
+    """جستجوی مقاله فقط در Sci-Hub.ru با استفاده از ScraperAPI"""
     
-    if not SCRAPERAPI_KEY:
-        logger.error("❌ SCRAPERAPI_KEY environment variable is not set!")
-        return None
-
-    scihub_mirrors = ["https://sci-hub.se", "https://sci-hub.st", "https://sci-hub.ru"]
+    # Using your API key directly
+    API_KEY = os.getenv("SCRAPERAPI_KEY", "dc58ddcba2dbb3bd1e6a1d4ee8bedcda")
     
-    # We don't need custom headers here; ScraperAPI handles browser headers for us
+    base_url = "https://sci-hub.ru"
+    target_url = f"{base_url}/{doi}"
+    
+    # URL-encode the Sci-Hub URL
+    encoded_url = urllib.parse.quote(target_url)
+    
+    # Build the ScraperAPI request URL
+    api_url = f"http://api.scraperapi.com?api_key={API_KEY}&url={encoded_url}"
+    
     async with aiohttp.ClientSession() as session:
-        for base_url in scihub_mirrors:
-            target_url = f"{base_url}/{doi}"
+        try:
+            logger.info(f"🌐 Accessing {target_url} VIA SCRAPERAPI...")
             
-            # URL-encode the Sci-Hub URL so it safely fits inside the API query parameters
-            encoded_url = urllib.parse.quote(target_url)
-            
-            # Build the ScraperAPI request URL
-            api_url = f"http://api.scraperapi.com?api_key={SCRAPERAPI_KEY}&url={encoded_url}"
-            
-            try:
-                logger.info(f"🌐 Accessing Sci-Hub via ScraperAPI: {target_url}")
-                
-                # Increased timeout to 45 seconds because scraping APIs take longer to solve captchas
-                async with session.get(api_url, timeout=45) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
-                        
-                        pdf_url = None
-                        
-                        pdf_container = soup.find('embed', id='pdf') or soup.find('iframe', id='pdf') or soup.find('embed')
-                        if pdf_container and pdf_container.has_attr('src'):
-                            pdf_url = pdf_container['src']
-                        
-                        if not pdf_url:
-                            button = soup.find('button', onclick=lambda x: x and 'location.href' in x)
-                            if button:
-                                parts = button['onclick'].split("'")
-                                if len(parts) >= 3:
-                                    pdf_url = parts[1]
+            # 60 seconds timeout - scraping APIs take time to bypass captchas
+            async with session.get(api_url, timeout=60) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    pdf_url = None
+                    
+                    # 1. Try to find standard PDF embed/iframe
+                    pdf_container = soup.find('embed', id='pdf') or soup.find('iframe', id='pdf') or soup.find('embed')
+                    if pdf_container and pdf_container.has_attr('src'):
+                        pdf_url = pdf_container['src']
+                    
+                    # 2. Try to find the download button if embed is missing
+                    if not pdf_url:
+                        button = soup.find('button', onclick=lambda x: x and 'location.href' in x)
+                        if button:
+                            parts = button['onclick'].split("'")
+                            if len(parts) >= 3:
+                                pdf_url = parts[1]
 
-                        if pdf_url:
-                            # Fix relative URLs
-                            if pdf_url.startswith('//'):
-                                pdf_url = f"https:{pdf_url}"
-                            elif pdf_url.startswith('/'):
-                                pdf_url = f"{base_url}{pdf_url}"
-                                
-                            logger.info(f"✅ Found Sci-Hub download link: {pdf_url}")
-                            return pdf_url
-                        else:
-                            logger.warning(f"⚠️ Page loaded, but no PDF container found.")
+                    if pdf_url:
+                        # Fix relative URLs
+                        if pdf_url.startswith('//'):
+                            pdf_url = f"https:{pdf_url}"
+                        elif pdf_url.startswith('/'):
+                            pdf_url = f"{base_url}{pdf_url}"
+                            
+                        logger.info(f"✅ Found Sci-Hub download link: {pdf_url}")
+                        return pdf_url
                     else:
-                        logger.warning(f"⚠️ ScraperAPI returned HTTP status: {response.status}")
-            
-            except asyncio.TimeoutError:
-                logger.error(f"❌ ScraperAPI request for {target_url} timed out.")
-            except Exception as e:
-                logger.error(f"❌ Error accessing API for {target_url}: {e}")
-                
-        logger.error("❌ Exhausted all Sci-Hub mirrors. Paper not found.")
-        return None
+                        logger.warning(f"⚠️ Page loaded via ScraperAPI, but no PDF found.")
+                        return None
+                else:
+                    logger.error(f"❌ ScraperAPI returned HTTP status: {response.status}")
+                    return None
+        
+        except asyncio.TimeoutError:
+            logger.error("❌ ScraperAPI request timed out (took longer than 60s).")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error accessing API: {e}")
+            return None
 
 async def get_libgen_download_link(doi):
     """جستجوی مقاله در Libgen بر اساس DOI و استخراج لینک مستقیم PDF با لاگینگ"""
@@ -337,29 +336,17 @@ async def get_libgen_download_link(doi):
 async def get_paper_pdf_link(doi: str) -> str:
     print(f"Starting paper download process for DOI: {doi}")
     
-    # 1. Try Unpaywall First (Best for Open Access papers like MDPI)
+    # 1. Try Unpaywall First
     print("Attempting to fetch from Unpaywall...")
     unpaywall_link = await get_unpaywall_pdf_link(doi)
     if unpaywall_link:
         print(f"Success! Found Unpaywall PDF link: {unpaywall_link}")
         return unpaywall_link
     
-    print("Unpaywall failed or paper is not Open Access. Falling back to Libgen...")
+    print("Unpaywall failed or paper is not Open Access. Falling back to Sci-Hub...")
 
-    # 2. Try Libgen
+    # 2. Try Sci-Hub via ScraperAPI (Libgen removed)
     try:
-        # Assuming you have your existing get_libgen_download_link function
-        libgen_link = await get_libgen_download_link(doi)
-        if libgen_link:
-            print(f"Success! Found Libgen PDF link: {libgen_link}")
-            return libgen_link
-    except Exception as e:
-        print(f"Libgen attempt failed: {e}")
-
-    # 3. Try Sci-Hub (If Libgen fails/times out)
-    print("Libgen failed. Falling back to Sci-Hub...")
-    try:
-        # Assuming you have your existing get_scihub_download_link function
         scihub_link = await get_scihub_download_link(doi)
         if scihub_link:
             print(f"Success! Found Sci-Hub PDF link: {scihub_link}")
