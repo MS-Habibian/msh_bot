@@ -18,6 +18,7 @@ from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_butt
 from handlers.commands import start_command, help_command, help_callback_handler
 from handlers.podcast import handle_pod_callback, pod_command, podchannel_command 
 from telegram.ext import CommandHandler, CallbackQueryHandler
+from telegram import Update, BotCommand
 
 # Import Scholar Handlers
 
@@ -33,6 +34,25 @@ logging.basicConfig(
 async def on_startup(application: Application):
     print("Starting Telegram MTProto Client...")
     await tg_app.start()
+    commands = [
+        BotCommand("start", "Start the bot"),
+        BotCommand("help", "Get help"),
+        BotCommand("dl", "Download a file"),
+        BotCommand("google", "Search on Google"),
+        BotCommand("dlp", "DLP handler"),
+        BotCommand("dlp2", "DLP2 handler"),
+        BotCommand("image", "Image tool"),
+        BotCommand("yt", "Search YouTube"),
+        BotCommand("ytdl", "Download from YouTube"),
+        BotCommand("pin", "Pinterest tools"),
+        BotCommand("tgposts", "Telegram posts downloader"),
+        BotCommand("scholar", "Search Google Scholar papers"),
+        BotCommand("podcast", "Podcast tools"),
+        BotCommand("podchannel", "Podcast channel tools")
+    ]
+    # Push the commands to Telegram (or Bale) servers
+    await application.bot.set_my_commands(commands)
+    print("Bot commands menu updated!")
 
 async def on_shutdown(application: Application):
     print("Stopping Telegram MTProto Client...")
