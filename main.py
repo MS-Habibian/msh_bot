@@ -1,8 +1,7 @@
 # main.py
 import logging
 from telegram import Update
-# اضافه شدن ConversationHandler به لیست ایمپورت‌ها
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters, ConversationHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from config import BOT_TOKEN
 from handlers.commands import start_command, help_command
 from handlers.dlp import dlp_callback, dlp_command
@@ -14,15 +13,14 @@ from handlers.image import image_command
 from handlers.linkedin import linkedin_command
 from handlers.paper_handler import paper_download_callback, paper_paginate_callback, paper_search_command
 from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command
-
-# ---> تغییر ایمپورت‌های پینترست <---
-from handlers.pinterest import pin_command, pin_download_callback, receive_pin_query, cancel_pin, WAITING_FOR_PIN_QUERY
-
+from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
 from handlers.commands import start_command, help_command, help_callback_handler
 from handlers.podcast import handle_pod_callback, pod_command, podchannel_command 
+from telegram.ext import CommandHandler, CallbackQueryHandler
 
 # Import Scholar Handlers
+
 from utils.tg_client import tg_app # Import the Pyrogram ap
 
 # Setup logging
@@ -46,8 +44,8 @@ def main() -> None:
         Application.builder()
         .token(BOT_TOKEN)
         .base_url("https://tapi.bale.ai/bot")
-        .post_init(on_startup)      
-        .post_shutdown(on_shutdown) 
+        .post_init(on_startup)      # <--- ADD THIS
+        .post_shutdown(on_shutdown) # <--- ADD THIS
         .build()
     )
 
@@ -72,18 +70,10 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_yt_download_callback, pattern="^ytdl:"))
     application.add_handler(CallbackQueryHandler(handle_yt_format_callback, pattern=r"^ytfmt:"))
 
-    # ---> جایگزینی هندلر پینترست <---
-    pin_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('pin', pin_command)],
-        states={
-            WAITING_FOR_PIN_QUERY: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_pin_query)]
-        },
-        fallbacks=[CommandHandler('cancel', cancel_pin)]
-    )
-    application.add_handler(pin_conv_handler)
-    # دکمه‌های شیشه‌ای پینترست بدون تغییر باقی می‌مانند
+    # پینترست
+    application.add_handler(CommandHandler("pin", pin_command))
     application.add_handler(CallbackQueryHandler(pin_download_callback, pattern='^(pindl_|pinmore_)'))
-    # ----------------------------------
+    # application.add_handler(CallbackQueryHandler(pin_page_callback, pattern=r"^pin_page\|"))
 
     application.add_handler(CommandHandler("tgposts", tgposts_command))
     application.add_handler(CallbackQueryHandler(handle_download_rar_button, pattern="^dlrar:"))
@@ -95,10 +85,18 @@ def main() -> None:
     application.add_handler(CommandHandler("scholar", paper_search_command))
     application.add_handler(CallbackQueryHandler(paper_download_callback, pattern=r"^paper_pdf\|"))
     application.add_handler(CallbackQueryHandler(paper_paginate_callback, pattern=r"^scholar_page\|"))
-    
+    # در بخشی که هندلرهای یوتیوب را Add می‌کنید، این خطوط را اضافه کنید:
     application.add_handler(CommandHandler("podcast", pod_command))
+    # application.add_handler(CallbackQueryHandler(handle_pod_download_callback, pattern='^poddl:'))
+    # تغییر پترن به گونه‌ای که هر دو poddl و podmore را بگیرد
     application.add_handler(CallbackQueryHandler(handle_pod_callback, pattern='^pod(dl|more):'))
-    application.add_handler(CommandHandler("podchannel", podchannel_command)) 
+    application.add_handler(CommandHandler("podchannel", podchannel_command)) # Add this line
+    # application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
+
+
+    # application.add_handler(CommandHandler("linkedin", linkedin_command))
+
+
 
     # Start the bot
     print("Bot is starting with clean architecture...")

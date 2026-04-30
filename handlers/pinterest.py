@@ -1,7 +1,12 @@
 # import aiohttp
+# import http.cookiejar
+# from typing import List, Dict
 # from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 # from telegram.ext import ContextTypes
 # from utils.pinterest_helper import search_pinterest_rss, load_cookies
+
+
+
 
 # async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #     if not context.args:
@@ -9,34 +14,35 @@
 #         return
 
 #     query = " ".join(context.args)
-#     context.user_data['pin_query'] = query
-    
-#     # شروع جستجو از آفست 0
-#     await send_pin_results(update.message, context, query, offset=0)
+#     processing_msg = await update.message.reply_text(f"🔍 در حال جستجوی تصاویر برای '{query}'...")
 
-
-# async def send_pin_results(message, context, query, offset):
-#     processing_msg = await message.reply_text(f"🔍 در حال جستجوی تصاویر برای '{query}' (نتایج {offset+1} تا {offset+10})...")
-
-#     results = await search_pinterest_rss(query, limit=10, offset=offset)
+#     results = await search_pinterest_rss(query, limit=10)
 
 #     if not results:
-#         await processing_msg.edit_text("❌ نتیجه‌ای یافت نشد یا به انتهای نتایج رسیدیم.")
+#         await processing_msg.edit_text("❌ نتیجه‌ای یافت نشد. لطفاً دوباره تلاش کنید.")
 #         return
 
-#     # ذخیره و آپدیت نتایج در context تا دانلود کار کند
-#     if 'pin_results' not in context.user_data or offset == 0:
-#         context.user_data['pin_results'] = results
-#     else:
-#         context.user_data['pin_results'].extend(results)
+#     context.user_data['pin_results'] = results
 
 #     cookies = load_cookies('/root/msh_bot/pinterest_cookies.txt')
     
 #     headers = {
 #         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
 #         'Accept': 'application/json, text/javascript, */*, q=0.01',
+#         'Accept-Language': 'en-US,en;q=0.5',
+#         'Accept-Encoding': 'gzip, deflate, br',
+#         'X-Requested-With': 'XMLHttpRequest',
+#         'X-APP-VERSION': 'cb1c7f9',  # Update this - check network tab in browser
+#         'X-Pinterest-AppState': 'active',
+#         'X-CSRFToken': cookies.get('csrftoken', ''),  # Add CSRF token from cookies
 #         'Referer': f'https://www.pinterest.com/search/pins/?q={query}&rs=typed',
+#         'Origin': 'https://www.pinterest.com',
 #         'DNT': '1',
+#         'Connection': 'keep-alive',
+#         'Sec-Fetch-Dest': 'empty',
+#         'Sec-Fetch-Mode': 'cors',
+#         'Sec-Fetch-Site': 'same-origin',
+#         'TE': 'trailers',
 #     }
 
 #     await processing_msg.delete()
@@ -46,6 +52,7 @@
 #         for item in results:
 #             try:
 #                 async with session.get(item['thumbnail'], headers=headers, timeout=15) as img_response:
+#                     print(f"[Pinterest] Image {item['id']} status: {img_response.status}")
 #                     if img_response.status == 200:
 #                         img_bytes = await img_response.read()
                         
@@ -55,6 +62,7 @@
 #                         )]]
 #                         reply_markup = InlineKeyboardMarkup(keyboard)
                         
+#                         # ساخت caption با توضیحات و لینک
 #                         caption = f"🖼 تصویر شماره {item['id']}\n"
 #                         if item.get('description'):
 #                             caption += f"\n📝 {item['description'][:200]}\n"
@@ -67,133 +75,136 @@
 #                         elif item.get('url'):
 #                             caption += f"🔗 {item['url']}\n"
                         
-#                         await message.reply_photo(
+#                         await update.message.reply_photo(
 #                             photo=img_bytes,
 #                             caption=caption,
 #                             reply_markup=reply_markup
 #                         )
+                        
+#                         print(f"[Pinterest] Sent image {item['id']} ({len(img_bytes)} bytes)")
+#                     else:
+#                         print(f"[Pinterest] Failed to download image {item['id']}: {img_response.status}")
 #             except Exception as e:
 #                 print(f"[Pinterest] Error downloading image {item['id']}: {e}")
 #                 continue
 
-#     # دکمه نتایج بعدی
-#     next_keyboard = [[InlineKeyboardButton("⬇️ 10 نتیجه بعدی", callback_data=f"pinmore_{offset+10}")]]
-#     await message.reply_text("برای مشاهده تصاویر بیشتر روی دکمه زیر کلیک کنید:", reply_markup=InlineKeyboardMarkup(next_keyboard))
 
 
 # async def pin_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #     query = update.callback_query
 #     await query.answer()
 
-#     # مدیریت دکمه "نتایج بعدی"
-#     if query.data.startswith("pinmore_"):
-#         offset = int(query.data.split("_")[1])
-#         search_query = context.user_data.get('pin_query')
-        
-#         if not search_query:
-#             await query.message.reply_text("❌ کوئری جستجو منقضی شده است. لطفا دوباره جستجو کنید.")
-#             return
-            
-#         # حذف دکمه "نتایج بعدی" از پیام فعلی
-#         await query.edit_message_reply_markup(reply_markup=None)
-#         # ارسال سری بعدی
-#         await send_pin_results(query.message, context, search_query, offset)
+#     pin_id = query.data.replace("pindl_", "")
+#     results = context.user_data.get('pin_results', [])
+
+#     selected = next((item for item in results if item['id'] == pin_id), None)
+#     if not selected:
+#         await query.edit_message_text("❌ خطا: تصویر یافت نشد.")
 #         return
 
-#     # مدیریت دکمه "دانلود کیفیت اصلی"
-#     if query.data.startswith("pindl_"):
-#         pin_id = query.data.replace("pindl_", "")
-#         results = context.user_data.get('pin_results', [])
+#     await query.message.reply_text(f"⏳ در حال دانلود تصویر شماره {pin_id}...")
 
-#         selected = next((item for item in results if item['id'] == pin_id), None)
-#         if not selected:
-#             await query.message.reply_text("❌ خطا: تصویر یافت نشد.")
-#             return
+#     # بارگذاری کوکی‌ها
+#     cookies = load_cookies('/root/msh_bot/pinterest_cookies.txt')
+    
+#     headers = {
+#         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
+#         'Accept': 'image/avif,image/webp,*/*',
+#         'Referer': 'https://www.pinterest.com/',
+#         'DNT': '1',
+#         'Sec-Fetch-Dest': 'image',
+#         'Sec-Fetch-Mode': 'no-cors',
+#         'Sec-Fetch-Site': 'cross-site',
+#     }
 
-#         status_msg = await query.message.reply_text(f"⏳ در حال دانلود تصویر شماره {pin_id}...")
+#     try:
+#         connector = aiohttp.TCPConnector(ssl=False)
+#         async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
+#             async with session.get(selected['original'], headers=headers, timeout=20) as response:
+#                 if response.status == 200:
+#                     img_bytes = await response.read()
+#                     await query.message.reply_photo(photo=img_bytes, caption=f"✅ تصویر شماره {pin_id}")
+#                 else:
+#                     await query.message.reply_text(f"❌ خطا در دانلود: {response.status}")
+#     except Exception as e:
+#         await query.message.reply_text(f"❌ خطا: {str(e)}")
 
-#         cookies = load_cookies('/root/msh_bot/pinterest_cookies.txt')
 
-#         headers = {
-#             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
-#             'Accept': 'image/avif,image/webp,*/*',
-#             'Referer': 'https://www.pinterest.com/',
-#             'DNT': '1',
-#             'Sec-Fetch-Dest': 'image',
-#             'Sec-Fetch-Mode': 'no-cors',
-#             'Sec-Fetch-Site': 'cross-site',
-#         }
+# async def pin_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     query = update.callback_query
+#     await query.answer()
 
-#         try:
-#             connector = aiohttp.TCPConnector(ssl=False)
-#             async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
-#                 async with session.get(selected['original'], headers=headers, timeout=20) as response:
-#                     if response.status == 200:
-#                         img_bytes = await response.read()
+#     pin_id = query.data.replace("pindl_", "")
+#     results = context.user_data.get('pin_results', [])
+
+#     selected = next((item for item in results if item['id'] == pin_id), None)
+#     if not selected:
+#         await query.message.reply_text("❌ خطا: تصویر یافت نشد.")
+#         return
+
+#     status_msg = await query.message.reply_text(f"⏳ در حال دانلود تصویر شماره {pin_id}...")
+
+#     cookies = load_cookies('/root/msh_bot/pinterest_cookies.txt')
+
+#     headers = {
+#         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
+#         'Accept': 'image/avif,image/webp,*/*',
+#         'Referer': 'https://www.pinterest.com/',
+#         'DNT': '1',
+#         'Sec-Fetch-Dest': 'image',
+#         'Sec-Fetch-Mode': 'no-cors',
+#         'Sec-Fetch-Site': 'cross-site',
+#     }
+
+#     try:
+#         connector = aiohttp.TCPConnector(ssl=False)
+#         async with aiohttp.ClientSession(cookies=cookies, connector=connector) as session:
+#             # اول original را امتحان کن
+#             async with session.get(selected['original'], headers=headers, timeout=20) as response:
+#                 print(f"[Pinterest] Download original status: {response.status}")
+#                 if response.status == 200:
+#                     img_bytes = await response.read()
+#                     await status_msg.delete()
+#                     await query.message.reply_document(
+#                         document=img_bytes,
+#                         filename=f"pinterest_{pin_id}.jpg",
+#                         caption=f"✅ تصویر شماره {pin_id} - کیفیت اصلی"
+#                     )
+#                     return
+
+#                 # اگر original 403 داد، thumbnail را بفرست
+#                 print(f"[Pinterest] Original failed, trying thumbnail...")
+#                 async with session.get(selected['thumbnail'], headers=headers, timeout=20) as fallback:
+#                     if fallback.status == 200:
+#                         img_bytes = await fallback.read()
 #                         await status_msg.delete()
 #                         await query.message.reply_document(
 #                             document=img_bytes,
 #                             filename=f"pinterest_{pin_id}.jpg",
-#                             caption=f"✅ تصویر شماره {pin_id} - کیفیت اصلی"
+#                             caption=f"✅ تصویر شماره {pin_id}"
 #                         )
-#                         return
+#                     else:
+#                         await status_msg.edit_text(f"❌ خطا در دانلود تصویر: {fallback.status}")
 
-#                     # Fallback to thumbnail
-#                     async with session.get(selected['thumbnail'], headers=headers, timeout=20) as fallback:
-#                         if fallback.status == 200:
-#                             img_bytes = await fallback.read()
-#                             await status_msg.delete()
-#                             await query.message.reply_document(
-#                                 document=img_bytes,
-#                                 filename=f"pinterest_{pin_id}.jpg",
-#                                 caption=f"✅ تصویر شماره {pin_id}"
-#                             )
-#                         else:
-#                             await status_msg.edit_text(f"❌ خطا در دانلود تصویر: {fallback.status}")
-
-#         except Exception as e:
-#             await status_msg.edit_text(f"❌ خطا: {str(e)}")
-
+#     except Exception as e:
+#         print(f"[Pinterest] Download error: {e}")
+#         await status_msg.edit_text(f"❌ خطا: {str(e)}")
 import aiohttp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler
-
-from utils.pinterest_helper import load_cookies, search_pinterest_rss
-
-# تعریف یک وضعیت (State) برای ConversationHandler
-WAITING_FOR_PIN_QUERY = 1
+from telegram.ext import ContextTypes
+from utils.pinterest_helper import search_pinterest_rss, load_cookies
 
 async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # اگر کاربر پارامتر را همراه دستور فرستاده باشد (مثلا /pin cats)
-    if context.args:
-        query = " ".join(context.args)
-        context.user_data['pin_query'] = query
-        # شروع جستجو
-        await send_pin_results(update.message, context, query, offset=0)
-        return ConversationHandler.END # پایان مکالمه
-    
-    # اگر کاربر فقط /pin را فرستاده باشد (از طریق منو)
-    else:
-        await update.message.reply_text("🔍 لطفاً عبارتی که می‌خواهید در پینترست جستجو کنید را ارسال کنید:\n(برای لغو می‌توانید /cancel را بفرستید)")
-        return WAITING_FOR_PIN_QUERY # ربات را به حالت انتظار برای دریافت متن می‌برد
+    if not context.args:
+        await update.message.reply_text("لطفاً یک عبارت برای جستجو وارد کنید.\nمثال: `/pin cats`", parse_mode="Markdown")
+        return
 
-async def receive_pin_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # دریافت متنی که کاربر تایپ کرده است
-    query = update.message.text
+    query = " ".join(context.args)
     context.user_data['pin_query'] = query
     
-    # شروع جستجو
+    # شروع جستجو از آفست 0
     await send_pin_results(update.message, context, query, offset=0)
-    return ConversationHandler.END # پایان مکالمه
 
-# یک تابع برای لغو کردن عملیات
-async def cancel_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ جستجو در پینترست لغو شد.")
-    return ConversationHandler.END
-
-# -------------------------------------------------------------------------
-# توابع send_pin_results و pin_download_callback دقیقاً بدون تغییر باقی می‌مانند:
-# -------------------------------------------------------------------------
 
 async def send_pin_results(message, context, query, offset):
     processing_msg = await message.reply_text(f"🔍 در حال جستجوی تصاویر برای '{query}' (نتایج {offset+1} تا {offset+10})...")
