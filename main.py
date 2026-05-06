@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 from config import BOT_TOKEN
 from handlers.commands import start_command, help_command
+from handlers.dd import dd_callback_handler, handle_dd_reupload_callback, list_server_files_command
 from handlers.dlp import dlp_callback, dlp_command
 from handlers.dlp2 import dlp2_command
 from handlers.downloader import download_command, handle_reupload_callback
@@ -93,9 +94,15 @@ def main() -> None:
     application.add_handler(CommandHandler("podchannel", podchannel_command)) # Add this line
     # application.add_handler(CallbackQueryHandler(paper_download_callback, pattern="^arxiv_pdf\|"))
 
-
     # application.add_handler(CommandHandler("linkedin", linkedin_command))
+        # Command to list the files (e.g., user types /listfiles)
+    application.add_handler(CommandHandler("listfiles", list_server_files_command))
 
+    # Callback handler for when a user selects a file from the list
+    application.add_handler(CallbackQueryHandler(dd_callback_handler, pattern="^select_file:"))
+
+    # Callback handler for the manual re-upload buttons
+    application.add_handler(CallbackQueryHandler(handle_dd_reupload_callback, pattern="^dd_reup:"))
 
 
     # Start the bot
