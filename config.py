@@ -4,8 +4,10 @@
 # hyvana bot
 # BOT_TOKEN = "1421133829:AgGZYsLFZIh3BDcJ6zoY4TWRRa5eYorP_9c"
 # msh bot
-BOT_TOKEN = "1855140195:kYt1ItznwXwZ2kSa9BTLPkgK9QoDUdVUld4"
+# BOT_TOKEN = "1855140195:kYt1ItznwXwZ2kSa9BTLPkgK9QoDUdVUld4"
 
+# d3
+BOT_TOKEN = "1136975800:Dg49E8aS0Jqulx6TK2C2FUyyUd4ryHFQ1V4"
 # Maximum file size allowed by Telegram Bot API (50 MB)
 MAX_FILE_SIZE = 50 * 1024 * 1024
 TG_API_ID = 34088870  # Your Telegram API ID (integer)
