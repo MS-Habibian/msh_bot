@@ -13,8 +13,9 @@
 #         return f"{hours}:{mins:02d}:{secs:02d}"
 #     return f"{mins}:{secs:02d}"
 
-# async def search_youtube_async(query: str, limit: int = 5) -> list:
-#     search_query = f"ytsearch{limit}:{query}"
+# async def search_youtube_async(query: str, limit: int = 5, offset: int = 0) -> list:
+#     # Fetch total limit + offset so we can skip the previous results
+#     search_query = f"ytsearch{limit + offset}:{query}"
 #     ydl_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
     
 #     def _search():
@@ -23,12 +24,15 @@
             
 #     try:
 #         result = await asyncio.to_thread(_search)
-#         # Added duration extraction here
+#         entries = result.get('entries', [])
+#         # Slice to return only the requested page
+#         sliced_entries = entries[offset : offset + limit]
+        
 #         return [{
 #             'id': e.get('id'), 
 #             'title': e.get('title', 'Unknown Title'),
 #             'duration': format_duration(e.get('duration'))
-#         } for e in result.get('entries', [])]
+#         } for e in sliced_entries]
 #     except Exception as e:
 #         print(f"yt-dlp Search Error: {e}")
 #         raise e
@@ -96,7 +100,6 @@ def format_duration(seconds: int | float | None) -> str:
     return f"{mins}:{secs:02d}"
 
 async def search_youtube_async(query: str, limit: int = 5, offset: int = 0) -> list:
-    # Fetch total limit + offset so we can skip the previous results
     search_query = f"ytsearch{limit + offset}:{query}"
     ydl_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
     
@@ -107,14 +110,22 @@ async def search_youtube_async(query: str, limit: int = 5, offset: int = 0) -> l
     try:
         result = await asyncio.to_thread(_search)
         entries = result.get('entries', [])
-        # Slice to return only the requested page
         sliced_entries = entries[offset : offset + limit]
         
-        return [{
-            'id': e.get('id'), 
-            'title': e.get('title', 'Unknown Title'),
-            'duration': format_duration(e.get('duration'))
-        } for e in sliced_entries]
+        results = []
+        for e in sliced_entries:
+            # Extract the best thumbnail available
+            thumbnail = e.get('thumbnail')
+            if not thumbnail and e.get('thumbnails'):
+                thumbnail = e.get('thumbnails')[-1].get('url')
+                
+            results.append({
+                'id': e.get('id'), 
+                'title': e.get('title', 'Unknown Title'),
+                'duration': format_duration(e.get('duration')),
+                'thumbnail': thumbnail
+            })
+        return results
     except Exception as e:
         print(f"yt-dlp Search Error: {e}")
         raise e

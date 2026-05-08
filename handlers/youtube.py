@@ -38,19 +38,60 @@
 #         return
 
 #     query = " ".join(context.args)
+#     # Telegram callback_data max size is 64 bytes. We slice the query to be safe.
+#     short_query = query[:40] 
 #     status_msg = await update.message.reply_text("🔍 در حال جستجو در یوتیوب...")
 
 #     try:
-#         results = await search_youtube_async(query, limit=5)
+#         results = await search_youtube_async(query, limit=5, offset=0)
 #         if not results:
 #             await status_msg.edit_text("❌ نتیجه‌ای یافت نشد.")
 #             return
 
-#         # Added duration to both buttons and text list
 #         keyboard = [[InlineKeyboardButton(f"🎬 انتخاب #{i} (⏱ {vid['duration']})", callback_data=f"ytfmt:{vid['id']}")] 
 #                     for i, vid in enumerate(results, start=1)]
         
+#         # Add the next 5 results button
+#         keyboard.append([InlineKeyboardButton("⬇️ 5 نتیجه ی بعدی", callback_data=f"ytmore:5:{short_query}")])
+        
 #         text = "🎥 *نتایج جستجوی یوتیوب:*\n\n" + "\n".join([f"{i}. ⏱ `{vid['duration']}` | {vid['title']}" for i, vid in enumerate(results, start=1)])
+        
+#         await status_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+#     except Exception as e:
+#         await status_msg.edit_text(f"❌ خطا در جستجو: `{str(e)}`", parse_mode="Markdown")
+
+# async def handle_yt_more_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+#     query_cb = update.callback_query
+#     await query_cb.answer()
+
+#     _, offset_str, query = query_cb.data.split(":", 2)
+#     offset = int(offset_str)
+
+#     # 1. Remove the "Next 5 results" button from the previous message
+#     old_keyboard = query_cb.message.reply_markup.inline_keyboard
+#     new_keyboard = [row for row in old_keyboard if not (row and row[0].callback_data and row[0].callback_data.startswith("ytmore:"))]
+#     await query_cb.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(new_keyboard))
+
+#     # 2. Send a new message to fetch and show the next 5 results
+#     status_msg = await context.bot.send_message(
+#         chat_id=query_cb.message.chat_id,
+#         text="🔍 در حال دریافت نتایج بعدی...",
+#         reply_to_message_id=query_cb.message.message_id
+#     )
+
+#     try:
+#         results = await search_youtube_async(query, limit=5, offset=offset)
+#         if not results:
+#             await status_msg.edit_text("❌ نتیجه دیگری یافت نشد.")
+#             return
+
+#         keyboard = [[InlineKeyboardButton(f"🎬 انتخاب #{i} (⏱ {vid['duration']})", callback_data=f"ytfmt:{vid['id']}")] 
+#                     for i, vid in enumerate(results, start=offset+1)]
+        
+#         # Add the next 5 results button to the NEW message
+#         keyboard.append([InlineKeyboardButton("⬇️ 5 نتیجه ی بعدی", callback_data=f"ytmore:{offset+5}:{query}")])
+        
+#         text = f"🎥 *نتایج جستجوی یوتیوب (صفحه بعدی):*\n\n" + "\n".join([f"{i}. ⏱ `{vid['duration']}` | {vid['title']}" for i, vid in enumerate(results, start=offset+1)])
         
 #         await status_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 #     except Exception as e:
@@ -94,7 +135,7 @@
 #     _, video_id = query.data.split(":")
 #     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
-#     # KEY CHANGE: Send a NEW message instead of editing the search results
+#     # Send a NEW message instead of editing the search results
 #     status_msg = await context.bot.send_message(
 #         chat_id=query.message.chat_id,
 #         text="⏳ در حال استخراج کیفیت‌های موجود...\nاین عملیات ممکن است کمی طول بکشد.",
@@ -203,7 +244,6 @@ def extract_yt_video_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 def _build_quality_keyboard(video_id: str, resolutions: list) -> InlineKeyboardMarkup:
-    """Helper function to build the resolution keyboard."""
     keyboard = []
     row = []
     for res in resolutions:
@@ -220,14 +260,55 @@ def _build_quality_keyboard(video_id: str, resolutions: list) -> InlineKeyboardM
     ])
     return InlineKeyboardMarkup(keyboard)
 
+
+async def send_search_results(context: ContextTypes.DEFAULT_TYPE, chat_id: int, results: list, query: str, offset: int):
+    """Helper function to send search results as individual messages"""
+    for i, vid in enumerate(results):
+        # Build Caption
+        caption = f"🎥 *{vid['title']}*\n⏱ مدت زمان: `{vid['duration']}`"
+        
+        # Build Keyboard
+        keyboard = [[InlineKeyboardButton(f"🎬 انتخاب و دانلود", callback_data=f"ytfmt:{vid['id']}")]]
+        
+        # If it's the last item, add the "Next 5 results" button at the bottom
+        if i == len(results) - 1:
+            short_query = query[:40]
+            keyboard.append([InlineKeyboardButton("⬇️ 5 نتیجه ی بعدی", callback_data=f"ytmore:{offset + 5}:{short_query}")])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        try:
+            if vid['thumbnail']:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=vid['thumbnail'],
+                    caption=caption,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=caption,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
+        except Exception as e:
+            # Fallback if photo sending fails
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=caption + f"\n[لینک تصویر]({vid['thumbnail']})",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+
+
 async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text("⚠️ لطفاً نام ویدیو را وارد کنید!\n*نحوه استفاده:* `/yt <نام ویدیو>`", parse_mode="Markdown")
         return
 
     query = " ".join(context.args)
-    # Telegram callback_data max size is 64 bytes. We slice the query to be safe.
-    short_query = query[:40] 
     status_msg = await update.message.reply_text("🔍 در حال جستجو در یوتیوب...")
 
     try:
@@ -236,17 +317,12 @@ async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await status_msg.edit_text("❌ نتیجه‌ای یافت نشد.")
             return
 
-        keyboard = [[InlineKeyboardButton(f"🎬 انتخاب #{i} (⏱ {vid['duration']})", callback_data=f"ytfmt:{vid['id']}")] 
-                    for i, vid in enumerate(results, start=1)]
+        await status_msg.delete() # Remove status message before sending photos
+        await send_search_results(context, update.message.chat_id, results, query, 0)
         
-        # Add the next 5 results button
-        keyboard.append([InlineKeyboardButton("⬇️ 5 نتیجه ی بعدی", callback_data=f"ytmore:5:{short_query}")])
-        
-        text = "🎥 *نتایج جستجوی یوتیوب:*\n\n" + "\n".join([f"{i}. ⏱ `{vid['duration']}` | {vid['title']}" for i, vid in enumerate(results, start=1)])
-        
-        await status_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
         await status_msg.edit_text(f"❌ خطا در جستجو: `{str(e)}`", parse_mode="Markdown")
+
 
 async def handle_yt_more_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query_cb = update.callback_query
@@ -255,16 +331,15 @@ async def handle_yt_more_callback(update: Update, context: ContextTypes.DEFAULT_
     _, offset_str, query = query_cb.data.split(":", 2)
     offset = int(offset_str)
 
-    # 1. Remove the "Next 5 results" button from the previous message
+    # 1. Remove the "Next 5 results" button from the last message
     old_keyboard = query_cb.message.reply_markup.inline_keyboard
     new_keyboard = [row for row in old_keyboard if not (row and row[0].callback_data and row[0].callback_data.startswith("ytmore:"))]
     await query_cb.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(new_keyboard))
 
-    # 2. Send a new message to fetch and show the next 5 results
+    # 2. Status message
     status_msg = await context.bot.send_message(
         chat_id=query_cb.message.chat_id,
-        text="🔍 در حال دریافت نتایج بعدی...",
-        reply_to_message_id=query_cb.message.message_id
+        text="🔍 در حال دریافت نتایج بعدی..."
     )
 
     try:
@@ -273,15 +348,9 @@ async def handle_yt_more_callback(update: Update, context: ContextTypes.DEFAULT_
             await status_msg.edit_text("❌ نتیجه دیگری یافت نشد.")
             return
 
-        keyboard = [[InlineKeyboardButton(f"🎬 انتخاب #{i} (⏱ {vid['duration']})", callback_data=f"ytfmt:{vid['id']}")] 
-                    for i, vid in enumerate(results, start=offset+1)]
+        await status_msg.delete()
+        await send_search_results(context, query_cb.message.chat_id, results, query, offset)
         
-        # Add the next 5 results button to the NEW message
-        keyboard.append([InlineKeyboardButton("⬇️ 5 نتیجه ی بعدی", callback_data=f"ytmore:{offset+5}:{query}")])
-        
-        text = f"🎥 *نتایج جستجوی یوتیوب (صفحه بعدی):*\n\n" + "\n".join([f"{i}. ⏱ `{vid['duration']}` | {vid['title']}" for i, vid in enumerate(results, start=offset+1)])
-        
-        await status_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
         await status_msg.edit_text(f"❌ خطا در جستجو: `{str(e)}`", parse_mode="Markdown")
 
@@ -323,7 +392,6 @@ async def handle_yt_format_callback(update: Update, context: ContextTypes.DEFAUL
     _, video_id = query.data.split(":")
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
-    # Send a NEW message instead of editing the search results
     status_msg = await context.bot.send_message(
         chat_id=query.message.chat_id,
         text="⏳ در حال استخراج کیفیت‌های موجود...\nاین عملیات ممکن است کمی طول بکشد.",
