@@ -136,23 +136,71 @@ async def search_youtube_async(query: str, limit: int = 5, offset: int = 0) -> l
         raise e
 
 async def get_channel_videos_async(channel_id: str, limit: int = 5, offset: int = 0) -> list:
-    """دریافت ویدیوهای یک کانال با صفحه بندی"""
-    if not channel_id.startswith("http"):
-        if not channel_id.startswith("@"):
-            channel_id = f"@{channel_id}"
-        channel_url = f"https://www.youtube.com/{channel_id}/videos"
-    else:
-        channel_url = channel_id
+    """دریافت ویدیوهای یک کانال با صفحه بندی و پشتیبانی از جستجوی نام کانال"""
+    def _get_channel():
+        target_url = channel_id
+        
+        # بررسی اینکه آیا ورودی لینک یا آیدی است یا یک کلمه جستجو (مثل نام فارسی)
+        if not target_url.startswith("http"):
+            if target_url.startswith("@"):
+                target_url = f"https://www.youtube.com/{target_url}/videos"
+            else:
+                # اگر کلمه جستجو باشد، اولین ویدیوی مرتبط را پیدا کرده و لینک کانالش را استخراج می‌کنیم
+                search_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
+                with yt_dlp.YoutubeDL(search_opts) as ydl:
+                    search_info = ydl.extract_info(f"ytsearch1:{channel_id}", download=False)
+                    if not search_info or not search_info.get('entries'):
+                        raise ValueError("CHANNEL_NOT_FOUND")
+                    
+                    first_video = search_info['entries'][0]
+                    uploader_url = first_video.get('channel_url') or first_video.get('uploader_url')
+                    
+                    if not uploader_url:
+                        raise ValueError("CHANNEL_NOT_FOUND")
+                    
+                    target_url = uploader_url.rstrip("/") + "/videos"
+        else:
+            if not target_url.endswith("/videos"):
+                target_url = target_url.rstrip("/") + "/videos"
 
-    # تعیین رنج ویدیوهایی که باید استخراج شوند (1-based index)
-    start = offset + 1
-    end = offset + limit
-    ydl_opts = {
-        'extract_flat': True, 
-        'quiet': True, 
-        'no_warnings': True,
-        'playlist_items': f'{start}-{end}'
-    }
+        # تعیین رنج ویدیوهایی که باید استخراج شوند (1-based index)
+        start = offset + 1
+        end = offset + limit
+        ydl_opts = {
+            'extract_flat': True, 
+            'quiet': True, 
+            'no_warnings': True,
+            'playlist_items': f'{start}-{end}'
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(target_url, download=False)
+            
+    try:
+        result = await asyncio.to_thread(_get_channel)
+        entries = result.get('entries', [])
+        
+        results = []
+        for e in entries:
+            if not e: continue
+            thumbnail = e.get('thumbnail')
+            if not thumbnail and e.get('thumbnails'):
+                thumbnail = e.get('thumbnails')[-1].get('url')
+                
+            results.append({
+                'id': e.get('id'), 
+                'title': e.get('title', 'Unknown Title'),
+                'duration': format_duration(e.get('duration')),
+                'thumbnail': thumbnail
+            })
+        return results
+    except Exception as e:
+        # شناسایی خطاهای مربوط به پیدا نشدن کانال
+        if "CHANNEL_NOT_FOUND" in str(e) or "404" in str(e) or "HTTP Error 404" in str(e):
+            raise ValueError("CHANNEL_NOT_FOUND")
+        print(f"yt-dlp Channel Error: {e}")
+        raise e
+
     
     def _get_channel():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

@@ -346,12 +346,68 @@ async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except Exception as e:
         await status_msg.edit_text(f"❌ خطا در جستجو: `{str(e)}`", parse_mode="Markdown")
 
+# async def ytc_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+#     if not context.args:
+#         await update.message.reply_text("⚠️ لطفاً آیدی یا لینک کانال را وارد کنید!\n*نحوه استفاده:* `/ytc @channelname`", parse_mode="Markdown")
+#         return
+
+#     channel_id = context.args[0]
+#     status_msg = await update.message.reply_text("🔍 در حال بررسی کانال و دریافت ویدیوها...")
+
+#     try:
+#         results = await get_channel_videos_async(channel_id, limit=5, offset=0)
+#         if not results:
+#             await status_msg.edit_text("❌ ویدیویی در این کانال یافت نشد.")
+#             return
+
+#         await status_msg.delete()
+#         await send_search_results(context, update.message.chat_id, results, channel_id, 0, is_channel=True)
+        
+#     except Exception as e:
+#         await status_msg.edit_text(f"❌ خطا در دریافت ویدیوهای کانال: `{str(e)}`", parse_mode="Markdown")
+
+
+# async def handle_yt_more_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+#     query_cb = update.callback_query
+#     await query_cb.answer()
+
+#     is_channel = query_cb.data.startswith("ytcmore:")
+#     prefix = "ytcmore:" if is_channel else "ytmore:"
+    
+#     _, offset_str, query = query_cb.data.split(":", 2)
+#     offset = int(offset_str)
+
+#     old_keyboard = query_cb.message.reply_markup.inline_keyboard
+#     new_keyboard = [row for row in old_keyboard if not (row and row[0].callback_data and row[0].callback_data.startswith(prefix))]
+#     await query_cb.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(new_keyboard))
+
+#     status_msg = await context.bot.send_message(
+#         chat_id=query_cb.message.chat_id,
+#         text="🔍 در حال دریافت نتایج بعدی..."
+#     )
+
+#     try:
+#         if is_channel:
+#             results = await get_channel_videos_async(query, limit=5, offset=offset)
+#         else:
+#             results = await search_youtube_async(query, limit=5, offset=offset)
+            
+#         if not results:
+#             await status_msg.edit_text("❌ نتیجه دیگری یافت نشد.")
+#             return
+
+#         await status_msg.delete()
+#         await send_search_results(context, query_cb.message.chat_id, results, query, offset, is_channel)
+        
+#     except Exception as e:
+#         await status_msg.edit_text(f"❌ خطا: `{str(e)}`", parse_mode="Markdown")
 async def ytc_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
-        await update.message.reply_text("⚠️ لطفاً آیدی یا لینک کانال را وارد کنید!\n*نحوه استفاده:* `/ytc @channelname`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ لطفاً نام، آیدی یا لینک کانال را وارد کنید!\n*نحوه استفاده:* `/ytc نام کانال` یا `/ytc @channelname`", parse_mode="Markdown")
         return
 
-    channel_id = context.args[0]
+    # استفاده از join برای پشتیبانی از نام‌های دارای فاصله (مثل: بی بی سی)
+    channel_id = " ".join(context.args)
     status_msg = await update.message.reply_text("🔍 در حال بررسی کانال و دریافت ویدیوها...")
 
     try:
@@ -363,9 +419,13 @@ async def ytc_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await status_msg.delete()
         await send_search_results(context, update.message.chat_id, results, channel_id, 0, is_channel=True)
         
+    except ValueError as e:
+        if str(e) == "CHANNEL_NOT_FOUND":
+            await status_msg.edit_text("❌ کانال مورد نظر یافت نشد. لطفاً نام را دقیق‌تر وارد کنید یا از آیدی کانال (مانند @username) استفاده کنید.")
+        else:
+            await status_msg.edit_text("❌ خطا در برقراری ارتباط با یوتیوب. لطفاً دوباره تلاش کنید.")
     except Exception as e:
-        await status_msg.edit_text(f"❌ خطا در دریافت ویدیوهای کانال: `{str(e)}`", parse_mode="Markdown")
-
+        await status_msg.edit_text("❌ کانال مورد نظر یافت نشد. لطفاً نام یا آیدی معتبر وارد کنید.")
 
 async def handle_yt_more_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query_cb = update.callback_query
@@ -399,8 +459,14 @@ async def handle_yt_more_callback(update: Update, context: ContextTypes.DEFAULT_
         await status_msg.delete()
         await send_search_results(context, query_cb.message.chat_id, results, query, offset, is_channel)
         
+    except ValueError as e:
+        if str(e) == "CHANNEL_NOT_FOUND":
+            await status_msg.edit_text("❌ کانال مورد نظر یافت نشد.")
+        else:
+            await status_msg.edit_text("❌ خطا در دریافت اطلاعات.")
     except Exception as e:
-        await status_msg.edit_text(f"❌ خطا: `{str(e)}`", parse_mode="Markdown")
+        await status_msg.edit_text("❌ خطایی رخ داد، لطفاً دوباره تلاش کنید.")
+
 
 
 async def ytdl_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
