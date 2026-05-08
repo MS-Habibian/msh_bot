@@ -12,8 +12,9 @@ from handlers.image import image_command
 # from handlers.instagram import instagram_command
 from handlers.linkedin import linkedin_command
 from handlers.paper_handler import paper_download_callback, paper_paginate_callback, paper_search_command
-# ADDED handle_yt_more_callback here
-from handlers.youtube import handle_yt_format_callback, yt_command, handle_yt_download_callback, ytdl_command, handle_yt_more_callback
+
+# ADDED ytc_command here
+from handlers.youtube import handle_yt_format_callback, yt_command, ytc_command, handle_yt_download_callback, ytdl_command, handle_yt_more_callback
 from handlers.pinterest import pin_command, pin_download_callback
 from handlers.tgposts import handle_download_rar_button, handle_reupload_tg_button, tgposts_command
 from handlers.commands import start_command, help_command, help_callback_handler
@@ -45,8 +46,8 @@ def main() -> None:
         Application.builder()
         .token(BOT_TOKEN)
         .base_url("https://tapi.bale.ai/bot")
-        .post_init(on_startup)      # <--- ADD THIS
-        .post_shutdown(on_shutdown) # <--- ADD THIS
+        .post_init(on_startup)      
+        .post_shutdown(on_shutdown) 
         .build()
     )
 
@@ -67,17 +68,18 @@ def main() -> None:
 
     # هندلر جستجوی یوتیوب
     application.add_handler(CommandHandler("yt", yt_command))
+    application.add_handler(CommandHandler("ytc", ytc_command)) # NEW COMMAND FOR CHANNEL
     application.add_handler(CommandHandler("ytdl", ytdl_command))
     application.add_handler(CallbackQueryHandler(handle_yt_download_callback, pattern="^ytdl:"))
     application.add_handler(CallbackQueryHandler(handle_yt_format_callback, pattern=r"^ytfmt:"))
-    # NEW HANDLER FOR NEXT 5 RESULTS
-    application.add_handler(CallbackQueryHandler(handle_yt_more_callback, pattern=r"^ytmore:"))
+    
+    # NEW HANDLER FOR NEXT 5 RESULTS (Supports both normal search and channel search)
+    application.add_handler(CallbackQueryHandler(handle_yt_more_callback, pattern=r"^yt(c)?more:"))
 
     # پینترست
     application.add_handler(CommandHandler("pin", pin_command))
     application.add_handler(CallbackQueryHandler(pin_download_callback, pattern='^(pindl_|pinmore_)'))
-    # application.add_handler(CallbackQueryHandler(pin_page_callback, pattern=r"^pin_page\|"))
-
+    
     application.add_handler(CommandHandler("tgposts", tgposts_command))
     application.add_handler(CallbackQueryHandler(handle_download_rar_button, pattern="^dlrar:"))
     application.add_handler(CallbackQueryHandler(handle_reupload_tg_button, pattern="^reuptg:"))

@@ -14,7 +14,6 @@
 #     return f"{mins}:{secs:02d}"
 
 # async def search_youtube_async(query: str, limit: int = 5, offset: int = 0) -> list:
-#     # Fetch total limit + offset so we can skip the previous results
 #     search_query = f"ytsearch{limit + offset}:{query}"
 #     ydl_opts = {'extract_flat': True, 'quiet': True, 'no_warnings': True}
     
@@ -25,14 +24,22 @@
 #     try:
 #         result = await asyncio.to_thread(_search)
 #         entries = result.get('entries', [])
-#         # Slice to return only the requested page
 #         sliced_entries = entries[offset : offset + limit]
         
-#         return [{
-#             'id': e.get('id'), 
-#             'title': e.get('title', 'Unknown Title'),
-#             'duration': format_duration(e.get('duration'))
-#         } for e in sliced_entries]
+#         results = []
+#         for e in sliced_entries:
+#             # Extract the best thumbnail available
+#             thumbnail = e.get('thumbnail')
+#             if not thumbnail and e.get('thumbnails'):
+#                 thumbnail = e.get('thumbnails')[-1].get('url')
+                
+#             results.append({
+#                 'id': e.get('id'), 
+#                 'title': e.get('title', 'Unknown Title'),
+#                 'duration': format_duration(e.get('duration')),
+#                 'thumbnail': thumbnail
+#             })
+#         return results
 #     except Exception as e:
 #         print(f"yt-dlp Search Error: {e}")
 #         raise e
@@ -90,7 +97,6 @@ import os
 import time
 
 def format_duration(seconds: int | float | None) -> str:
-    """تبدیل ثانیه به فرمت خوانای زمان"""
     if not seconds:
         return "N/A"
     mins, secs = divmod(int(seconds), 60)
@@ -114,7 +120,6 @@ async def search_youtube_async(query: str, limit: int = 5, offset: int = 0) -> l
         
         results = []
         for e in sliced_entries:
-            # Extract the best thumbnail available
             thumbnail = e.get('thumbnail')
             if not thumbnail and e.get('thumbnails'):
                 thumbnail = e.get('thumbnails')[-1].get('url')
@@ -128,6 +133,51 @@ async def search_youtube_async(query: str, limit: int = 5, offset: int = 0) -> l
         return results
     except Exception as e:
         print(f"yt-dlp Search Error: {e}")
+        raise e
+
+async def get_channel_videos_async(channel_id: str, limit: int = 5, offset: int = 0) -> list:
+    """دریافت ویدیوهای یک کانال با صفحه بندی"""
+    if not channel_id.startswith("http"):
+        if not channel_id.startswith("@"):
+            channel_id = f"@{channel_id}"
+        channel_url = f"https://www.youtube.com/{channel_id}/videos"
+    else:
+        channel_url = channel_id
+
+    # تعیین رنج ویدیوهایی که باید استخراج شوند (1-based index)
+    start = offset + 1
+    end = offset + limit
+    ydl_opts = {
+        'extract_flat': True, 
+        'quiet': True, 
+        'no_warnings': True,
+        'playlist_items': f'{start}-{end}'
+    }
+    
+    def _get_channel():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(channel_url, download=False)
+            
+    try:
+        result = await asyncio.to_thread(_get_channel)
+        entries = result.get('entries', [])
+        
+        results = []
+        for e in entries:
+            if not e: continue
+            thumbnail = e.get('thumbnail')
+            if not thumbnail and e.get('thumbnails'):
+                thumbnail = e.get('thumbnails')[-1].get('url')
+                
+            results.append({
+                'id': e.get('id'), 
+                'title': e.get('title', 'Unknown Title'),
+                'duration': format_duration(e.get('duration')),
+                'thumbnail': thumbnail
+            })
+        return results
+    except Exception as e:
+        print(f"yt-dlp Channel Error: {e}")
         raise e
 
 async def get_youtube_qualities_async(video_url: str) -> list:
@@ -157,8 +207,9 @@ async def download_youtube_video_async(url: str, output_dir: str, format_str: st
                 last_update_time[0] = current_time
                 downloaded = d.get('downloaded_bytes', 0)
                 total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                speed = d.get('speed', 0)  # دریافت سرعت از yt-dlp
                 if asyncio.iscoroutinefunction(progress_callback):
-                    asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total), main_loop)
+                    asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total, speed), main_loop)
 
     ydl_opts = {
         'format': format_str,
