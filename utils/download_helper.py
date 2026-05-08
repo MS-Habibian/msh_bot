@@ -65,12 +65,12 @@ def split_media_playable(filepath, max_size_mb=19):
     """Splits audio/video into playable segments using FFmpeg explicitly."""
     max_size_bytes = max_size_mb * 1024 * 1024
     file_size = os.path.getsize(filepath)
-    
+
     if file_size <= max_size_bytes:
         return [filepath]
-        
+
     parts_count = math.ceil(file_size / max_size_bytes)
-    
+
     try:
         cmd_duration = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filepath]
         total_duration = float(subprocess.check_output(cmd_duration).decode('utf-8').strip())
@@ -81,44 +81,72 @@ def split_media_playable(filepath, max_size_mb=19):
     segment_time = math.ceil(total_duration / parts_count)
     base_name, ext = os.path.splitext(filepath)
     split_files = []
-    
+
     for i in range(parts_count):
         start_time = i * segment_time
         if start_time >= total_duration:
             break
-            
+
         output_file = f"{base_name}_part{i+1:03d}{ext}"
         cmd_split = ['ffmpeg', '-y', '-i', filepath, '-ss', str(start_time), '-t', str(segment_time), '-c', 'copy', output_file]
         subprocess.run(cmd_split, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
+
         if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
             split_files.append(output_file)
 
     if split_files and os.path.exists(filepath):
         os.remove(filepath)
-        
+
     return split_files
 
 
-def split_file_rar(filepath, max_size_mb=19.5):
-    """Splits a file into multi-part RAR archives."""
+def split_file_rar(filepath, max_size_mb=19.5, password=None):
+    """Splits a file into multi-part RAR archives, with optional password protection."""
     max_size_bytes = int(max_size_mb * 1024 * 1024)
-    if os.path.getsize(filepath) <= max_size_bytes:
+
+    # Check if we should skip RAR entirely.
+    # We only skip if the file is small AND no password is required.
+    if os.path.getsize(filepath) <= max_size_bytes and not password:
         return [filepath]
 
     base_name, _ = os.path.splitext(filepath)
     rar_base_name = f"{base_name}.rar"
 
-    cmd = ['rar', 'a', f'-v{max_size_mb}M', '-m0', '-ep', rar_base_name, filepath]
+    # Base command for RAR
+    cmd = ["rar", "a", f"-v{max_size_mb}M", "-m0", "-ep"]
+
+    # Add the password flag if a password is provided
+    if password:
+        # -hp encrypts file data AND file headers (names of the files inside the archive)
+        # (If you only want to encrypt data but let users see the filenames before typing the password, use '-p' instead of '-hp')
+        cmd.append(f"-hp{password}")
+
+    # Add destination and source
+    cmd.extend([rar_base_name, filepath])
 
     try:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        subprocess.run(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True
+        )
     except Exception as e:
         print(f"Error creating RAR: {e}")
         return split_file(filepath, chunk_size=max_size_bytes)
 
+    # Find the generated parts
     split_files = glob.glob(f"{base_name}.part*.rar")
-    split_files.sort(key=lambda f: int(re.search(r'part(\d+)\.rar$', f).group(1)) if re.search(r'part(\d+)\.rar$', f) else 0)
+
+    # If the file was smaller than the max size, RAR might just create a standard .rar file without 'part1'
+    if not split_files and os.path.exists(rar_base_name):
+        split_files = [rar_base_name]
+
+    # Sort the files properly
+    split_files.sort(
+        key=lambda f: (
+            int(re.search(r"part(\d+)\.rar$", f).group(1))
+            if re.search(r"part(\d+)\.rar$", f)
+            else 0
+        )
+    )
 
     if split_files and os.path.exists(filepath):
         os.remove(filepath)

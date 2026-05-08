@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
 # Replace these imports with your actual project structure if needed
-from config import SERVER_FILES_PATH
+from config import SERVER_FILES_PATH, ENCRYPTION_PASSWORD
 from utils.download_helper import split_file_rar
 
 # For safety, ensure the path is set. If config doesn't have it, fallback to /var/files
@@ -95,7 +95,7 @@ async def dd_callback_handler(
             shutil.copy2(source_filepath, processing_filepath)
 
             # Split the file using your helper
-            split_file_rar(processing_filepath)
+            split_file_rar(processing_filepath, 19.5, ENCRYPTION_PASSWORD)
 
             # Remove the copied original file to save space, keeping only the split parts
             if os.path.exists(processing_filepath):
