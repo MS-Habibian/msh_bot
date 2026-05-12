@@ -268,6 +268,7 @@ async def download_youtube_video_async(url: str, output_dir: str, format_str: st
         'progress_hooks': [my_hook],
         'quiet': True,
         'no_warnings': True,
+        'cachedir': False,
     }
 
     def _download():
