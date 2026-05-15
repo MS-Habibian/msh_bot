@@ -203,7 +203,14 @@ async def get_channel_videos_async(channel_id: str, limit: int = 5, offset: int 
 
 
 async def get_youtube_qualities_async(video_url: str) -> list:
-    ydl_opts = {'cookiefile': 'cookie.txt', 'js_runtimes': {'node': {}}, 'remote_components': 'ejs:github', 'quiet': True, 'no_warnings': True}
+    # ydl_opts = {'cookiefile': 'cookie.txt', 'js_runtimes': {'node': {}}, 'remote_components': 'ejs:github', 'quiet': True, 'no_warnings': True}
+    ydl_opts = {
+        'cookiefile': 'cookie.txt', 
+        # Removed 'js_runtimes': {'node': {}} so yt-dlp can use Deno automatically
+        'quiet': True, 
+        'no_warnings': True
+    }
+
     
     def _get_info():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -237,13 +244,12 @@ async def download_youtube_video_async(url: str, output_dir: str, format_str: st
     ydl_opts = {
         'format': format_str,
         'outtmpl': os.path.join(output_dir, '%(title)s_%(id)s.%(ext)s'),
-        'cookiefile': 'cookie.txt', 
-        'js_runtimes': {'node': {}},    
-        'remote_components': 'ejs:github',
+        'cookiefile': 'cookie.txt',
+        # Removed 'js_runtimes': {'node': {}}
         'progress_hooks': [my_hook],
-        'merge_output_format': 'mp4',  # ADDED: Forces ffmpeg to combine video/audio into mp4
-        'quiet': False,                # CHANGED: Allows us to see the exact error log in console
-        'no_warnings': False,          # CHANGED: Show warnings for debugging
+        'merge_output_format': 'mp4',
+        'quiet': False,
+        'no_warnings': False,
     }
 
     def _download():

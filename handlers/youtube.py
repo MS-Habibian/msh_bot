@@ -480,16 +480,12 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
     _, video_id, quality = query.data.split(":")
     video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    # --- UPDATED FORMAT LOGIC ---
     if quality == 'best':
-        format_str = 'bestvideo+bestaudio/best'
+        format_str = 'b'
     elif quality == 'audio':
         format_str = 'bestaudio[ext=m4a]/bestaudio/best'
     else:
-        format_str = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"
-
-    # --- DEBUG LOG ADDED ---
-    print(f"DEBUG - REQUESTED FORMAT STR: {format_str} for URL: {video_url}")
+        format_str = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
 
     file_id = str(uuid.uuid4())
     download_folder = os.path.join("downloads", file_id)
@@ -552,4 +548,3 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
             await query.edit_message_text(text=error_text, parse_mode="Markdown")
         except:
             await context.bot.send_message(chat_id=update.effective_chat.id, text=error_text, parse_mode="Markdown")
-
