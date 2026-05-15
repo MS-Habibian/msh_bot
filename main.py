@@ -25,6 +25,9 @@ from telegram.ext import CommandHandler, CallbackQueryHandler
 
 from utils.tg_client import tg_app # Import the Pyrogram ap
 
+from handlers.gemini import ask_gemini_command
+
+
 # Setup logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -93,7 +96,9 @@ def main() -> None:
     
     application.add_handler(CommandHandler("podcast", pod_command))
     application.add_handler(CallbackQueryHandler(handle_pod_callback, pattern='^pod(dl|more):'))
-    application.add_handler(CommandHandler("podchannel", podchannel_command)) 
+    application.add_handler(CommandHandler("podchannel", podchannel_command))
+
+    application.add_handler(CommandHandler("ask", ask_gemini_command))
 
     # Start the bot
     print("Bot is starting with clean architecture...")
