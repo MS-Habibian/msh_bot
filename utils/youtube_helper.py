@@ -201,43 +201,9 @@ async def get_channel_videos_async(channel_id: str, limit: int = 5, offset: int 
         print(f"yt-dlp Channel Error: {e}")
         raise e
 
-    
-    def _get_channel():
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            return ydl.extract_info(channel_url, download=False)
-            
-    try:
-        result = await asyncio.to_thread(_get_channel)
-        entries = result.get('entries', [])
-        
-        results = []
-        for e in entries:
-            if not e: continue
-            thumbnail = e.get('thumbnail')
-            if not thumbnail and e.get('thumbnails'):
-                thumbnail = e.get('thumbnails')[-1].get('url')
-                
-            results.append({
-                'id': e.get('id'), 
-                'title': e.get('title', 'Unknown Title'),
-                'duration': format_duration(e.get('duration')),
-                'thumbnail': thumbnail
-            })
-        return results
-    except Exception as e:
-        print(f"yt-dlp Channel Error: {e}")
-        raise e
 
 async def get_youtube_qualities_async(video_url: str) -> list:
-    ydl_opts = {
-        'cookiefile': 'cookie.txt', 
-        'js_runtimes': {'node': {}}, 
-        'remote_components': 'ejs:github', 
-        'quiet': True, 
-        'no_warnings': True,
-        'format': 'bestvideo+bestaudio/best', # اضافه شد
-        'ignore_no_formats_error': True       # اضافه شد
-    }
+    ydl_opts = {'cookiefile': 'cookie.txt', 'js_runtimes': {'node': {}}, 'remote_components': 'ejs:github', 'quiet': True, 'no_warnings': True}
     
     def _get_info():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -263,10 +229,11 @@ async def download_youtube_video_async(url: str, output_dir: str, format_str: st
                 last_update_time[0] = current_time
                 downloaded = d.get('downloaded_bytes', 0)
                 total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                speed = d.get('speed', 0)  # دریافت سرعت از yt-dlp
+                speed = d.get('speed', 0)
                 if asyncio.iscoroutinefunction(progress_callback):
                     asyncio.run_coroutine_threadsafe(progress_callback(downloaded, total, speed), main_loop)
 
+    # --- UPDATED OPTIONS ---
     ydl_opts = {
         'format': format_str,
         'outtmpl': os.path.join(output_dir, '%(title)s_%(id)s.%(ext)s'),
@@ -274,8 +241,9 @@ async def download_youtube_video_async(url: str, output_dir: str, format_str: st
         'js_runtimes': {'node': {}},    
         'remote_components': 'ejs:github',
         'progress_hooks': [my_hook],
-        'quiet': True,
-        'no_warnings': True,
+        'merge_output_format': 'mp4',  # ADDED: Forces ffmpeg to combine video/audio into mp4
+        'quiet': False,                # CHANGED: Allows us to see the exact error log in console
+        'no_warnings': False,          # CHANGED: Show warnings for debugging
     }
 
     def _download():
@@ -284,3 +252,4 @@ async def download_youtube_video_async(url: str, output_dir: str, format_str: st
             return ydl.prepare_filename(info)
 
     return await asyncio.to_thread(_download)
+

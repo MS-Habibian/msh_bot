@@ -346,61 +346,6 @@ async def yt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except Exception as e:
         await status_msg.edit_text(f"❌ خطا در جستجو: `{str(e)}`", parse_mode="Markdown")
 
-# async def ytc_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-#     if not context.args:
-#         await update.message.reply_text("⚠️ لطفاً آیدی یا لینک کانال را وارد کنید!\n*نحوه استفاده:* `/ytc @channelname`", parse_mode="Markdown")
-#         return
-
-#     channel_id = context.args[0]
-#     status_msg = await update.message.reply_text("🔍 در حال بررسی کانال و دریافت ویدیوها...")
-
-#     try:
-#         results = await get_channel_videos_async(channel_id, limit=5, offset=0)
-#         if not results:
-#             await status_msg.edit_text("❌ ویدیویی در این کانال یافت نشد.")
-#             return
-
-#         await status_msg.delete()
-#         await send_search_results(context, update.message.chat_id, results, channel_id, 0, is_channel=True)
-        
-#     except Exception as e:
-#         await status_msg.edit_text(f"❌ خطا در دریافت ویدیوهای کانال: `{str(e)}`", parse_mode="Markdown")
-
-
-# async def handle_yt_more_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-#     query_cb = update.callback_query
-#     await query_cb.answer()
-
-#     is_channel = query_cb.data.startswith("ytcmore:")
-#     prefix = "ytcmore:" if is_channel else "ytmore:"
-    
-#     _, offset_str, query = query_cb.data.split(":", 2)
-#     offset = int(offset_str)
-
-#     old_keyboard = query_cb.message.reply_markup.inline_keyboard
-#     new_keyboard = [row for row in old_keyboard if not (row and row[0].callback_data and row[0].callback_data.startswith(prefix))]
-#     await query_cb.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(new_keyboard))
-
-#     status_msg = await context.bot.send_message(
-#         chat_id=query_cb.message.chat_id,
-#         text="🔍 در حال دریافت نتایج بعدی..."
-#     )
-
-#     try:
-#         if is_channel:
-#             results = await get_channel_videos_async(query, limit=5, offset=offset)
-#         else:
-#             results = await search_youtube_async(query, limit=5, offset=offset)
-            
-#         if not results:
-#             await status_msg.edit_text("❌ نتیجه دیگری یافت نشد.")
-#             return
-
-#         await status_msg.delete()
-#         await send_search_results(context, query_cb.message.chat_id, results, query, offset, is_channel)
-        
-#     except Exception as e:
-#         await status_msg.edit_text(f"❌ خطا: `{str(e)}`", parse_mode="Markdown")
 async def ytc_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text("⚠️ لطفاً نام، آیدی یا لینک کانال را وارد کنید!\n*نحوه استفاده:* `/ytc نام کانال` یا `/ytc @channelname`", parse_mode="Markdown")
@@ -534,15 +479,17 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
 
     _, video_id, quality = query.data.split(":")
     video_url = f"https://www.youtube.com/watch?v={video_id}"
- 
+
+    # --- UPDATED FORMAT LOGIC ---
     if quality == 'best':
-        # تغییر از 'b' به بهترین ترکیب ممکن یا بهترین فایل موجود
         format_str = 'bestvideo+bestaudio/best'
     elif quality == 'audio':
         format_str = 'bestaudio[ext=m4a]/bestaudio/best'
     else:
-        # اضافه شدن /best به انتهای رشته به عنوان راهکار جایگزین نهایی
         format_str = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"
+
+    # --- DEBUG LOG ADDED ---
+    print(f"DEBUG - REQUESTED FORMAT STR: {format_str} for URL: {video_url}")
 
     file_id = str(uuid.uuid4())
     download_folder = os.path.join("downloads", file_id)
@@ -605,3 +552,4 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
             await query.edit_message_text(text=error_text, parse_mode="Markdown")
         except:
             await context.bot.send_message(chat_id=update.effective_chat.id, text=error_text, parse_mode="Markdown")
+
