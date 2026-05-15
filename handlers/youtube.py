@@ -534,13 +534,15 @@ async def handle_yt_download_callback(update: Update, context: ContextTypes.DEFA
 
     _, video_id, quality = query.data.split(":")
     video_url = f"https://www.youtube.com/watch?v={video_id}"
-
+ 
     if quality == 'best':
-        format_str = 'b'
+        # تغییر از 'b' به بهترین ترکیب ممکن یا بهترین فایل موجود
+        format_str = 'bestvideo+bestaudio/best'
     elif quality == 'audio':
         format_str = 'bestaudio[ext=m4a]/bestaudio/best'
     else:
-        format_str = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
+        # اضافه شدن /best به انتهای رشته به عنوان راهکار جایگزین نهایی
+        format_str = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"
 
     file_id = str(uuid.uuid4())
     download_folder = os.path.join("downloads", file_id)

@@ -229,7 +229,15 @@ async def get_channel_videos_async(channel_id: str, limit: int = 5, offset: int 
         raise e
 
 async def get_youtube_qualities_async(video_url: str) -> list:
-    ydl_opts = {'cookiefile': 'cookie.txt', 'js_runtimes': {'node': {}}, 'remote_components': 'ejs:github', 'quiet': True, 'no_warnings': True}
+    ydl_opts = {
+        'cookiefile': 'cookie.txt', 
+        'js_runtimes': {'node': {}}, 
+        'remote_components': 'ejs:github', 
+        'quiet': True, 
+        'no_warnings': True,
+        'format': 'bestvideo+bestaudio/best', # اضافه شد
+        'ignore_no_formats_error': True       # اضافه شد
+    }
     
     def _get_info():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
